@@ -1,6 +1,6 @@
 import regex as re, glob, json
 SRC = glob.glob('/mnt/user-data/attachments/*/76749113-claude-chapters-710-809.txt')[0]
-QUOTE = re.compile(r'"([^"]+)"|“([^”]+)”|(?<![\p{L}\p{N}])‘(.+?)’(?![\p{L}\p{N}])')
+from quotes import QUOTE  # mixed-mark aware, mirrors SpeakerDetector.findQuotes
 
 def load_book():
     chapters = {}

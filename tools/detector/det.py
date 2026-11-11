@@ -74,7 +74,7 @@ class Detector:
         return out
 
     # ---------- per-chapter detection ----------
-    QUOTE = re.compile(r'"([^"]+)"|“([^”]+)”|(?<![\p{L}\p{N}])‘(.+?)’(?![\p{L}\p{N}])')
+    from quotes import QUOTE  # mixed-mark aware, mirrors the app
     SPV = re.compile(r'\b(?:' + SPEECH + r')\b')
 
     W_POV = 4.0

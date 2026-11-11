@@ -15,7 +15,7 @@ Priority is manual fix, then AI labels, then offline detector.
 3. **Manual**: long-press a line in the reader.
 
 ## IMPORTANT constraints
-- **Quote numbering must not change.** The export lists `Q1, Q2...` as the quoted segments (`isQuote == true`) in order, and Restore maps them back the same way. Every regex quote match must stay a quote segment. Scare quotes stay `isQuote = true` with `scare = true`. Changing the segmentation breaks all saved AI labels.
+- **Quote numbering must not change.** The export lists `Q1, Q2...` as the quoted segments (`isQuote == true`) in order, and Restore maps them back the same way. Every regex quote match must stay a quote segment. Scare quotes stay `isQuote = true` with `scare = true`. Changing the segmentation breaks all saved AI labels. (Exception, done once: `SpeakerDetector.findQuotes` now also matches mixed-mark quotes such as "text” or “text") in the gaps between the old matches. Old matches keep their numbering, but paragraphs that gained a quote need labels with one extra name; `data/labels-709-1000.txt` was rebuilt for this and replaces `labels-709-728.txt`. Any labels saved before this change must be restored again from that file.)
 - Short reply format (what the app imports):
   ```
   EPUBVOICE-AI 1

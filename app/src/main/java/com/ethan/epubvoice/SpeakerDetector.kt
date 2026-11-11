@@ -60,6 +60,26 @@ object SpeakerDetector {
     private val QUOTE = Regex(
         "\"([^\"]+)\"|“([^”]+)”|(?<![\\p{L}\\p{N}])‘(.+?)’(?![\\p{L}\\p{N}])"
     )
+    // Mixed-mark quotes ("text” or “text") that QUOTE misses. Only searched in the gaps between
+    // QUOTE matches, so every earlier match (and its numbering) stays exactly as before.
+    private val QUOTE_MIXED = Regex("[\"“]([^\"“”]+)[\"”]")
+    private class QM(val range: IntRange, val text: String)
+    private fun findQuotes(t: String): List<QM> {
+        val out = ArrayList<QM>()
+        fun gap(a: Int, b: Int) {
+            if (b <= a) return
+            for (m in QUOTE_MIXED.findAll(t.substring(a, b)))
+                out.add(QM((m.range.first + a)..(m.range.last + a), m.groupValues[1]))
+        }
+        var pos = 0
+        for (m in QUOTE.findAll(t)) {
+            gap(pos, m.range.first)
+            out.add(QM(m.range, m.groups.drop(1).firstNotNullOfOrNull { it?.value } ?: ""))
+            pos = m.range.last + 1
+        }
+        gap(pos, t.length)
+        return out
+    }
     private val TOKEN = Regex("\\p{Lu}\\p{L}+")
     private val CAP3 = Regex("\\p{Lu}\\p{L}{2,}")
     private val LOW3 = Regex("(?<![\\p{L}])\\p{Ll}\\p{L}{2,}")
@@ -105,7 +125,7 @@ object SpeakerDetector {
 
     private class Chap(val paras: List<String>, val persons: Set<String>) {
         val n = paras.size
-        val q: List<List<MatchResult>> = paras.map { QUOTE.findAll(it).toList() }
+        val q: List<List<QM>> = paras.map { findQuotes(it) }
         val narr: List<String> = paras.mapIndexed { p, t ->
             if (q[p].isEmpty()) t else {
                 val sb = StringBuilder(t)
@@ -156,7 +176,7 @@ object SpeakerDetector {
         }
     }
 
-    private fun quoteText(m: MatchResult): String = m.groups.drop(1).firstNotNullOfOrNull { it?.value } ?: ""
+    private fun quoteText(m: QM): String = m.text
 
     private fun namesIn(text: String, persons: Set<String>): List<Hit> {
         val out = ArrayList<Hit>()
@@ -241,7 +261,7 @@ object SpeakerDetector {
         val out = ArrayList<List<Segment>>(paras.size)
         if (rx == null) {
             for ((p, t) in paras.withIndex()) {
-                val ms = QUOTE.findAll(t).toList()
+                val ms = findQuotes(t)
                 out.add(buildSegments(t, ms, arrayOfNulls(ms.size), BooleanArray(ms.size), BooleanArray(ms.size)))
             }
             return out
@@ -306,7 +326,7 @@ object SpeakerDetector {
     }
 
     private fun buildSegments(
-        text: String, ms: List<MatchResult>, spk: Array<String?>, guess: BooleanArray, scare: BooleanArray
+        text: String, ms: List<QM>, spk: Array<String?>, guess: BooleanArray, scare: BooleanArray
     ): List<Segment> {
         if (ms.isEmpty()) return listOf(Segment(text, false))
         val segs = ArrayList<Segment>()
