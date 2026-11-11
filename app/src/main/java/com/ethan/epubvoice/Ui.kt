@@ -67,184 +67,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.UUID
 
-enum class Screen { READER, SETTINGS, CHARACTERS, CHAPTERS }
-
-@Composable
-fun App(vm: ReaderViewModel) {
-    val ctx = LocalContext.current
-    var screen by remember { mutableStateOf(Screen.READER) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            try {
-                ctx.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            } catch (_: Exception) {
-            }
-            vm.openBook(uri)
-        }
-    }
-    BackHandler(enabled = screen != Screen.READER) { screen = Screen.READER }
-
-    val bg = Color(vm.settings.background)
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = bg,
-        contentColor = if (bg.luminance() < 0.5f) Color.White else Color.Black
-    ) {
-        when (screen) {
-            Screen.READER -> ReaderScreen(vm, onOpen = { picker.launch(arrayOf("*/*")) }, nav = { screen = it })
-            Screen.SETTINGS -> SettingsScreen(vm) { screen = Screen.READER }
-            Screen.CHARACTERS -> CharactersScreen(vm) { screen = Screen.READER }
-            Screen.CHAPTERS -> ChaptersScreen(vm) { screen = Screen.READER }
-        }
-    }
-}
-
-// ---------------------------------------------------------------- reader
-
-@Composable
-fun ReaderScreen(vm: ReaderViewModel, onOpen: () -> Unit, nav: (Screen) -> Unit) {
-    val s = vm.settings
-    val book = vm.book
-    val listState = rememberLazyListState()
-    var assign by remember { mutableStateOf<Triple<Int, Int, Int>?>(null) }
-
-    LaunchedEffect(vm.chapterIndex, vm.paragraphIndex, book) {
-        if (book != null) listState.animateScrollToItem(vm.paragraphIndex + 1)
-    }
-
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onOpen) { Text("Open") }
-            TextButton({ nav(Screen.CHAPTERS) }) { Text("Chapters") }
-            TextButton({ nav(Screen.CHARACTERS) }) { Text("Characters") }
-            TextButton({ nav(Screen.SETTINGS) }) { Text("Settings") }
-        }
-        if (vm.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        vm.error?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
-        }
-
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (book == null) {
-                Column(
-                    Modifier.fillMaxSize().padding(24.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("Open an EPUB to start reading and listening.")
-                    Spacer(Modifier.size(12.dp))
-                    Button(onOpen) { Text("Open EPUB") }
-                }
-            } else {
-                val chapter = book.chapters[vm.chapterIndex]
-                LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                    item {
-                        Text(
-                            chapter.title,
-                            color = Color(s.chapterTitle),
-                            fontSize = (s.fontSize + 4f).sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(12.dp)
-                        )
-                    }
-                    itemsIndexed(chapter.paragraphs) { p, _ ->
-                        ParagraphView(
-                            vm = vm,
-                            ch = vm.chapterIndex,
-                            p = p,
-                            current = p == vm.paragraphIndex,
-                            onTap = { vm.jumpTo(vm.chapterIndex, p) },
-                            onLongQuote = { seg -> assign = Triple(vm.chapterIndex, p, seg) }
-                        )
-                    }
-                    item { Spacer(Modifier.size(80.dp)) }
-                }
-            }
-        }
-
-        if (book != null) {
-            Text(
-                "Chapter ${vm.chapterIndex + 1}/${book.chapters.size}  |  Paragraph ${vm.paragraphIndex + 1}/${book.chapters[vm.chapterIndex].paragraphs.size}",
-                fontSize = 12.sp,
-                modifier = Modifier.padding(horizontal = 12.dp)
-            )
-        }
-        Row(
-            Modifier.fillMaxWidth().padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedButton({ vm.stepChapter(-1) }, enabled = book != null) { Text("«") }
-            OutlinedButton({ vm.step(-1) }, enabled = book != null) { Text("‹") }
-            Button({ vm.togglePlay() }, enabled = book != null) { Text(if (vm.playing) "Pause" else "Play") }
-            OutlinedButton({ vm.step(1) }, enabled = book != null) { Text("›") }
-            OutlinedButton({ vm.stepChapter(1) }, enabled = book != null) { Text("»") }
-        }
-    }
-
-    assign?.let { (c, p, seg) ->
-        AssignDialog(vm, c, p, seg) { assign = null }
-    }
-}
-
-@Composable
-fun ParagraphView(
-    vm: ReaderViewModel,
-    ch: Int,
-    p: Int,
-    current: Boolean,
-    onTap: () -> Unit,
-    onLongQuote: (Int) -> Unit
-) {
-    val s = vm.settings
-    val segs = remember(vm.book, s, ch, p, vm.dataVersion) { vm.effectiveSegments(ch, p) }
-    val bounds = remember(segs) {
-        var acc = 0
-        segs.map { acc += it.text.length; acc }
-    }
-    val text = remember(segs, s.narration, s.dialogue, s.speakerColors, s.autoColors, vm.dataVersion) {
-        buildAnnotatedString {
-            for (seg in segs) {
-                val c = if (seg.isQuote && !seg.scare) vm.colorFor(seg.speaker) else s.narration
-                val style = if (seg.isQuote && seg.guess && !seg.scare) {
-                    SpanStyle(color = Color(c), fontStyle = FontStyle.Italic)
-                } else {
-                    SpanStyle(color = Color(c))
-                }
-                withStyle(style) { append(seg.text) }
-            }
-        }
-    }
-    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
-
-    Text(
-        text = text,
-        fontSize = s.fontSize.sp,
-        lineHeight = (s.fontSize * 1.45f).sp,
-        onTextLayout = { layout = it },
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(if (current) Color(s.highlight) else Color.Transparent)
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-            .pointerInput(segs) {
-                detectTapGestures(
-                    onTap = { onTap() },
-                    onLongPress = { pos ->
-                        val l = layout
-                        if (l != null) {
-                            val off = l.getOffsetForPosition(pos)
-                            val idx = bounds.indexOfFirst { off < it }.let { if (it < 0) bounds.lastIndex else it }
-                            if (idx >= 0 && segs[idx].isQuote) onLongQuote(idx)
-                        }
-                    }
-                )
-            }
-    )
-}
-
 @Composable
 fun AssignDialog(vm: ReaderViewModel, ch: Int, p: Int, seg: Int, onDismiss: () -> Unit) {
     val current = vm.effectiveSegments(ch, p).getOrNull(seg)
@@ -279,32 +101,6 @@ fun AssignDialog(vm: ReaderViewModel, ch: Int, p: Int, seg: Int, onDismiss: () -
             }
         }
     )
-}
-
-// ---------------------------------------------------------------- chapters
-
-@Composable
-fun ChaptersScreen(vm: ReaderViewModel, back: () -> Unit) {
-    Column(Modifier.fillMaxSize()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(back) { Text("‹ Back") }
-            Text("Chapters", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        }
-        val chapters = vm.book?.chapters ?: emptyList()
-        LazyColumn(Modifier.fillMaxSize()) {
-            itemsIndexed(chapters) { i, c ->
-                Text(
-                    "${i + 1}. ${c.title}",
-                    fontWeight = if (i == vm.chapterIndex) FontWeight.Bold else FontWeight.Normal,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { vm.jumpTo(i, 0); back() }
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                )
-                HorizontalDivider()
-            }
-        }
-    }
 }
 
 // ---------------------------------------------------------------- characters
@@ -393,7 +189,7 @@ fun CharactersScreen(vm: ReaderViewModel, back: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(back) { Text("‹ Back") }
+            TextButton(back) { Text("‹ Back", color = Blue) }
             Text("Text colors", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
@@ -529,7 +325,7 @@ fun SettingsScreen(vm: ReaderViewModel, back: () -> Unit) {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(back) { Text("‹ Back") }
+            TextButton(back) { Text("‹ Back", color = Blue) }
             Text("Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
 

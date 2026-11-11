@@ -9,10 +9,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+
+const val EXTRA_BOOK_ID = "com.ethan.epubvoice.BOOK_ID"
+const val ACTION_OPEN_BOOK = "com.ethan.epubvoice.OPEN_BOOK"
 
 class MainActivity : ComponentActivity() {
     private val vm: ReaderViewModel by viewModels()
@@ -27,13 +28,18 @@ class MainActivity : ComponentActivity() {
         }
 
         if (savedInstanceState == null) {
+            val shortcutBook = intent?.getStringExtra(EXTRA_BOOK_ID)
             val data = intent?.data
-            if (data != null) vm.openBook(data) else vm.restoreLast()
+            when {
+                shortcutBook != null -> vm.openLibraryBook(shortcutBook)
+                data != null -> vm.openBook(data)
+                else -> vm.restoreLast()
+            }
         }
 
         setContent {
             val dark = Color(vm.settings.background).luminance() < 0.5f
-            MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
+            MaterialTheme(colorScheme = appColors(dark)) {
                 App(vm)
             }
         }
@@ -41,6 +47,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent.data?.let { vm.openBook(it) }
+        val shortcutBook = intent.getStringExtra(EXTRA_BOOK_ID)
+        val data = intent.data
+        when {
+            shortcutBook != null -> vm.openLibraryBook(shortcutBook)
+            data != null -> vm.openBook(data)
+        }
     }
 }

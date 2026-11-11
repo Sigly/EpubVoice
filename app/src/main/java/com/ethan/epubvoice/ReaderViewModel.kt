@@ -34,6 +34,17 @@ private val PALETTE = intArrayOf(
 class ReaderViewModel(application: Application) : AndroidViewModel(application) {
     private val app: Application get() = getApplication()
     private val prefs = Prefs(app)
+    private val lib = Library(app)
+    private var bookId = ""
+
+    var library by mutableStateOf(lib.load())
+        private set
+    var bookmarks by mutableStateOf<List<Bookmark>>(emptyList())
+        private set
+
+    /** Bumped whenever a book starts opening from outside the library screen (shortcut, file open). */
+    var openSignal by mutableIntStateOf(0)
+        private set
 
     var settings by mutableStateOf(prefs.load())
         private set
@@ -93,6 +104,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun update(f: Settings.() -> Settings) {
         settings = settings.f()
         prefs.save(settings)
+        if (bookId.isNotEmpty()) lib.saveBookData(bookId, settings.overrides, settings.aliases, settings.speakerColors)
     }
 
     fun setColor(key: String, color: Int) = update {
@@ -203,7 +215,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     // ---------- AI attribution ----------
 
-    private fun aiFile(): File = File(app.filesDir, "ai_${settings.lastUri.hashCode()}.json")
+    private fun aiFile(): File = File(app.filesDir, "ai_$bookId.json")
 
     private fun loadAi() {
         aiMap = emptyMap()
@@ -488,36 +500,27 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     // ---------- book loading ----------
 
     fun restoreLast() {
-        if (book != null || settings.lastUri.isEmpty()) return
-        openBook(Uri.parse(settings.lastUri), restore = true)
+        if (book != null) return
+        val id = settings.lastBookId
+        if (id.isNotEmpty() && lib.bookFile(id).exists()) {
+            openLibraryBook(id)
+        } else if (settings.lastUri.isNotEmpty()) {
+            openBook(Uri.parse(settings.lastUri), restore = true)
+        }
     }
 
+    /** Opens an EPUB from outside the library (file picker or "open with"): it is added to the library first. */
     fun openBook(uri: Uri, restore: Boolean = false) {
         pause()
         aiJob?.cancel()
         loading = true
         error = null
+        if (!restore) openSignal++
         viewModelScope.launch {
             try {
-                val (b, det) = withContext(Dispatchers.IO) {
-                    val bk = EpubParser.parse(app, uri)
-                    bk to SpeakerDetector.detect(bk)
-                }
-                if (b.chapters.isEmpty()) throw IllegalStateException("No readable text found in this EPUB")
-                val resume = restore || settings.lastUri == uri.toString()
-                val ch = if (resume) settings.lastChapter.coerceIn(0, b.chapters.size - 1) else 0
-                val pi = if (resume) settings.lastParagraph.coerceIn(0, b.chapters[ch].paragraphs.size - 1) else 0
-                raw = det.chapters
-                autoAliases = det.autoAliases
-                chapterIndex = ch
-                paragraphIndex = pi
-                autoChapter = -1
-                update { copy(lastUri = uri.toString(), lastChapter = ch, lastParagraph = pi) }
-                loadAi()
-                book = b
-                aiStatus = null
-                computeCharacters()
-                maybeAutoAnalyze()
+                val id = withContext(Dispatchers.IO) { lib.importUri(uri) }
+                val legacy = settings.lastBookId.isEmpty() && settings.lastUri == uri.toString()
+                loadInto(id, legacy)
             } catch (t: Throwable) {
                 if (!restore) error = "Could not open the EPUB: ${t.message}"
             } finally {
@@ -526,9 +529,157 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun openLibraryBook(id: String) {
+        pause()
+        aiJob?.cancel()
+        loading = true
+        error = null
+        openSignal++
+        viewModelScope.launch {
+            try {
+                loadInto(id, false)
+            } catch (t: Throwable) {
+                error = "Could not open the book: ${t.message}"
+            } finally {
+                loading = false
+            }
+        }
+    }
+
+    /** Adds several EPUBs to the library without opening them (a single one is opened). */
+    fun addBooks(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        loading = true
+        error = null
+        viewModelScope.launch {
+            var lastId = ""
+            var failed = 0
+            for (uri in uris) {
+                try {
+                    val id = withContext(Dispatchers.IO) { lib.importUri(uri) }
+                    lastId = id
+                    if (library.none { it.id == id }) {
+                        val entry = withContext(Dispatchers.IO) {
+                            val meta = EpubParser.meta(lib.bookFile(id))
+                            LibraryEntry(id, meta.first, lib.saveCover(id, meta.second), 0, 0, 0, System.currentTimeMillis())
+                        }
+                        library = listOf(entry) + library
+                        lib.save(library)
+                    }
+                } catch (t: Throwable) {
+                    failed++
+                }
+            }
+            loading = false
+            if (failed > 0) error = "$failed file(s) could not be added"
+            if (uris.size == 1 && lastId.isNotEmpty() && failed == 0) openLibraryBook(lastId)
+        }
+    }
+
+    fun removeBook(id: String) {
+        if (id == bookId) {
+            pause()
+            aiJob?.cancel()
+            book = null
+            bookId = ""
+            raw = emptyList()
+            bookmarks = emptyList()
+            characters = emptyList()
+            update { copy(lastBookId = "", lastUri = "") }
+        }
+        lib.delete(id)
+        library = library.filter { it.id != id }
+        lib.save(library)
+    }
+
+    private suspend fun loadInto(id: String, legacy: Boolean) {
+        val file = lib.bookFile(id)
+        val parsed = withContext(Dispatchers.IO) {
+            val bk = EpubParser.parseFile(file)
+            bk to SpeakerDetector.detect(bk)
+        }
+        val b = parsed.first
+        val det = parsed.second
+        if (b.chapters.isEmpty()) throw IllegalStateException("No readable text found in this EPUB")
+
+        val known = library.firstOrNull { it.id == id }
+        val entry = if (known != null) {
+            known
+        } else {
+            val cover = withContext(Dispatchers.IO) { lib.saveCover(id, EpubParser.meta(file).second) }
+            LibraryEntry(id, b.title, cover, 0, 0, b.chapters.size, System.currentTimeMillis())
+        }
+        val startCh = if (legacy) settings.lastChapter else entry.chapter
+        val startP = if (legacy) settings.lastParagraph else entry.paragraph
+        val ch = startCh.coerceIn(0, b.chapters.size - 1)
+        val pi = startP.coerceIn(0, b.chapters[ch].paragraphs.size - 1)
+        library = listOf(entry.copy(title = b.title, chapter = ch, paragraph = pi, total = b.chapters.size)) +
+            library.filter { it.id != id }
+        lib.save(library)
+
+        // A book first opened by an older version of the app brings its old speaker data and AI results along.
+        if (legacy) {
+            val old = File(app.filesDir, "ai_${settings.lastUri.hashCode()}.json")
+            val dest = File(app.filesDir, "ai_$id.json")
+            if (old.exists() && !dest.exists()) {
+                try {
+                    old.copyTo(dest)
+                } catch (_: Exception) {
+                }
+            }
+        }
+        val data = lib.loadBookData(id)
+        bookId = id
+        settings = settings.copy(
+            overrides = data?.overrides ?: (if (legacy) settings.overrides else emptyMap()),
+            aliases = data?.aliases ?: (if (legacy) settings.aliases else emptyMap()),
+            speakerColors = data?.speakerColors ?: (if (legacy) settings.speakerColors else emptyMap())
+        )
+        raw = det.chapters
+        autoAliases = det.autoAliases
+        chapterIndex = ch
+        paragraphIndex = pi
+        autoChapter = -1
+        update { copy(lastBookId = id, lastUri = "", lastChapter = ch, lastParagraph = pi) }
+        loadAi()
+        bookmarks = lib.bookmarks(id)
+        book = b
+        aiStatus = null
+        computeCharacters()
+        maybeAutoAnalyze()
+    }
+
+    // ---------- bookmarks ----------
+
+    fun isBookmarked(c: Int, p: Int): Boolean = bookmarks.any { it.chapter == c && it.paragraph == p }
+
+    fun toggleBookmark(c: Int, p: Int) {
+        val b = book ?: return
+        val existing = bookmarks.firstOrNull { it.chapter == c && it.paragraph == p }
+        bookmarks = if (existing != null) {
+            bookmarks - existing
+        } else {
+            val preview = b.chapters.getOrNull(c)?.paragraphs?.getOrNull(p)?.take(100) ?: ""
+            (bookmarks + Bookmark(c, p, preview, System.currentTimeMillis()))
+                .sortedWith(compareBy({ it.chapter }, { it.paragraph }))
+        }
+        lib.saveBookmarks(bookId, bookmarks)
+    }
+
+    fun removeBookmark(bm: Bookmark) {
+        bookmarks = bookmarks - bm
+        lib.saveBookmarks(bookId, bookmarks)
+    }
+
     // ---------- navigation ----------
 
-    private fun saveProgress() = update { copy(lastChapter = chapterIndex, lastParagraph = paragraphIndex) }
+    private fun saveProgress() {
+        update { copy(lastChapter = chapterIndex, lastParagraph = paragraphIndex) }
+        if (bookId.isNotEmpty()) {
+            library = library.map { if (it.id == bookId) it.copy(chapter = chapterIndex, paragraph = paragraphIndex) else it }
+            lib.save(library)
+        }
+    }
 
     fun jumpTo(c: Int, p: Int) {
         val b = book ?: return

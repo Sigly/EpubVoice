@@ -4,6 +4,19 @@ data class Chapter(val title: String, val paragraphs: List<String>)
 
 data class Book(val title: String, val chapters: List<Chapter>)
 
+/** One book in the library. [cover] is a file path or empty. */
+data class LibraryEntry(
+    val id: String,
+    val title: String,
+    val cover: String,
+    val chapter: Int,
+    val paragraph: Int,
+    val total: Int,
+    val added: Long
+)
+
+data class Bookmark(val chapter: Int, val paragraph: Int, val preview: String, val time: Long)
+
 /** A piece of a paragraph. Quoted pieces are dialogue and may have a speaker. */
 data class Segment(
     val text: String,
@@ -29,11 +42,11 @@ data class HttpProvider(
 data class EngineOption(val id: String, val label: String)
 
 data class Settings(
-    val background: Int = 0xFF121212.toInt(),
-    val narration: Int = 0xFFD0D0D0.toInt(),
-    val dialogue: Int = 0xFFFFD54F.toInt(),
-    val highlight: Int = 0xFF2A3F5F.toInt(),
-    val chapterTitle: Int = 0xFF90CAF9.toInt(),
+    val background: Int = 0xFF000000.toInt(),
+    val narration: Int = 0xFFE8E8E8.toInt(),
+    val dialogue: Int = 0xFF5AA9FF.toInt(),
+    val highlight: Int = 0xFF0D2B52.toInt(),
+    val chapterTitle: Int = 0xFF3D8BFF.toInt(),
     val fontSize: Float = 18f,
     /** "system:<package>" (empty package = device default) or "http:<providerId>" */
     val engineId: String = "system:",
@@ -56,6 +69,7 @@ data class Settings(
     val aiParallel: Int = 1,
     val aiDelay: Int = 4,
     val lastUri: String = "",
+    val lastBookId: String = "",
     val lastChapter: Int = 0,
     val lastParagraph: Int = 0
 )

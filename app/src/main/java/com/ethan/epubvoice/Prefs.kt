@@ -14,12 +14,14 @@ class Prefs(ctx: Context) {
         } catch (e: Exception) {
             JSONObject()
         }
+        // Saved text colors from before the black, white and blue look are replaced once by the new defaults.
+        val fresh = j.optInt("themeV", 0) < 2
         return Settings(
-            background = j.optInt("background", d.background),
-            narration = j.optInt("narration", d.narration),
-            dialogue = j.optInt("dialogue", d.dialogue),
-            highlight = j.optInt("highlight", d.highlight),
-            chapterTitle = j.optInt("chapterTitle", d.chapterTitle),
+            background = if (fresh) d.background else j.optInt("background", d.background),
+            narration = if (fresh) d.narration else j.optInt("narration", d.narration),
+            dialogue = if (fresh) d.dialogue else j.optInt("dialogue", d.dialogue),
+            highlight = if (fresh) d.highlight else j.optInt("highlight", d.highlight),
+            chapterTitle = if (fresh) d.chapterTitle else j.optInt("chapterTitle", d.chapterTitle),
             fontSize = j.optDouble("fontSize", d.fontSize.toDouble()).toFloat(),
             engineId = j.optString("engineId", d.engineId),
             voice = j.optString("voice", d.voice),
@@ -38,6 +40,7 @@ class Prefs(ctx: Context) {
             aiParallel = j.optInt("aiParallel", d.aiParallel),
             aiDelay = j.optInt("aiDelay", d.aiDelay),
             lastUri = j.optString("lastUri", ""),
+            lastBookId = j.optString("lastBookId", ""),
             lastChapter = j.optInt("lastChapter", 0),
             lastParagraph = j.optInt("lastParagraph", 0)
         )
@@ -79,7 +82,9 @@ class Prefs(ctx: Context) {
         j.put("aiAuto", s.aiAuto)
         j.put("aiParallel", s.aiParallel)
         j.put("aiDelay", s.aiDelay)
+        j.put("themeV", 2)
         j.put("lastUri", s.lastUri)
+        j.put("lastBookId", s.lastBookId)
         j.put("lastChapter", s.lastChapter)
         j.put("lastParagraph", s.lastParagraph)
         sp.edit().putString("settings", j.toString()).apply()

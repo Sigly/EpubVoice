@@ -15,7 +15,44 @@ object EpubParser {
         val tmp = File(context.cacheDir, "current.epub")
         val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open the file")
         input.use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
+        return parseFile(tmp)
+    }
 
+    /** Title and cover image bytes (or null) without parsing the whole book. */
+    fun meta(file: File): Pair<String, ByteArray?> {
+        var title = "Untitled"
+        var cover: ByteArray? = null
+        try {
+            ZipFile(file).use { zip ->
+                fun entry(path: String) = zip.getEntry(path) ?: zip.getEntry(URLDecoder.decode(path, "UTF-8"))
+                fun text(path: String): String? =
+                    entry(path)?.let { e -> zip.getInputStream(e).bufferedReader(Charsets.UTF_8).use { it.readText() } }
+
+                val container = text("META-INF/container.xml") ?: return@use
+                val opfPath = Jsoup.parse(container, "", Parser.xmlParser())
+                    .selectFirst("rootfile")?.attr("full-path") ?: return@use
+                val opf = Jsoup.parse(text(opfPath) ?: return@use, "", Parser.xmlParser())
+                val baseDir = opfPath.substringBeforeLast('/', "")
+                opf.getElementsByTag("dc:title").firstOrNull()?.text()?.takeIf { it.isNotBlank() }?.let { title = it }
+
+                val items = opf.select("manifest > item")
+                val coverId = opf.select("meta[name=cover]").firstOrNull()?.attr("content").orEmpty()
+                val images = items.filter { it.attr("media-type").startsWith("image/") }
+                val pick = items.firstOrNull { it.attr("properties").contains("cover-image") }
+                    ?: images.firstOrNull { coverId.isNotEmpty() && it.attr("id") == coverId }
+                    ?: images.firstOrNull { it.attr("id").contains("cover", true) || it.attr("href").contains("cover", true) }
+                    ?: images.firstOrNull()
+                if (pick != null) {
+                    val e = entry(resolve(baseDir, pick.attr("href")))
+                    if (e != null) cover = zip.getInputStream(e).use { it.readBytes() }
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return title to cover
+    }
+
+    fun parseFile(tmp: File): Book {
         return ZipFile(tmp).use { zip ->
             fun read(path: String): String? {
                 val entry = zip.getEntry(path)
