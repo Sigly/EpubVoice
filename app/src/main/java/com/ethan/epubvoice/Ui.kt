@@ -57,7 +57,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -196,16 +198,21 @@ fun ParagraphView(
     onLongQuote: (Int) -> Unit
 ) {
     val s = vm.settings
-    val segs = remember(vm.book, s, ch, p, vm.characters) { vm.effectiveSegments(ch, p) }
+    val segs = remember(vm.book, s, ch, p, vm.dataVersion) { vm.effectiveSegments(ch, p) }
     val bounds = remember(segs) {
         var acc = 0
         segs.map { acc += it.text.length; acc }
     }
-    val text = remember(segs, s.narration, s.dialogue, s.speakerColors, s.autoColors, vm.characters) {
+    val text = remember(segs, s.narration, s.dialogue, s.speakerColors, s.autoColors, vm.dataVersion) {
         buildAnnotatedString {
             for (seg in segs) {
                 val c = if (seg.isQuote) vm.colorFor(seg.speaker) else s.narration
-                withStyle(SpanStyle(color = Color(c))) { append(seg.text) }
+                val style = if (seg.isQuote && seg.guess) {
+                    SpanStyle(color = Color(c), fontStyle = FontStyle.Italic)
+                } else {
+                    SpanStyle(color = Color(c))
+                }
+                withStyle(style) { append(seg.text) }
             }
         }
     }
@@ -313,6 +320,39 @@ fun CharactersScreen(vm: ReaderViewModel, back: () -> Unit) {
         }
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
             item {
+                Text("AI dialogue attribution", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+                if (!vm.aiReady()) {
+                    Text(
+                        "Add an API key under Settings > AI to let a language model work out who speaks each line, including thoughts and lines with no name nearby.",
+                        fontSize = 12.sp
+                    )
+                } else {
+                    val done = vm.aiChapterDone(vm.chapterIndex)
+                    Text(
+                        if (done) "This chapter has been analyzed by AI." else "This chapter has not been analyzed by AI yet.",
+                        fontSize = 12.sp
+                    )
+                    Row(Modifier.horizontalScroll(rememberScrollState())) {
+                        Button({ vm.analyzeRange(vm.chapterIndex, vm.chapterIndex, force = done) }, enabled = !vm.aiBusy) {
+                            Text(if (done) "Re-analyze chapter" else "Analyze chapter")
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        OutlinedButton({ vm.analyzeRange(vm.chapterIndex, vm.chapterIndex + 9) }, enabled = !vm.aiBusy) {
+                            Text("Next 10 chapters")
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        OutlinedButton({ vm.cancelAi() }, enabled = vm.aiBusy) { Text("Stop") }
+                    }
+                }
+                if (vm.aiBusy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp))
+                vm.aiStatus?.let { Text(it, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)) }
+                vm.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                Text(
+                    "Italic lines are guesses by the offline rules. Lines you fix by hand always win.",
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(vertical = 6.dp)
+                )
+                HorizontalDivider()
                 ColorRow("Narration (everything outside quotes)", s.narration) { pick = "narration" }
                 ColorRow("Dialogue with no known speaker", s.dialogue) { pick = "dialogue" }
                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -482,6 +522,50 @@ fun SettingsScreen(vm: ReaderViewModel, back: () -> Unit) {
                     voice = "default"
                 )
             }) { Text("Add GET server") }
+        }
+        Header("AI dialogue attribution")
+        Text(
+            "A language model reads each chapter and decides who speaks or thinks every quoted line. " +
+                "The chapter text is sent to the provider you choose, and your provider bills you per use (usually a few cents per book with a small model). " +
+                "Your key is stored only on this phone.",
+            fontSize = 12.sp
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(s.aiKind == "anthropic", {
+                vm.update { copy(aiKind = "anthropic", aiModel = if (aiKind != "anthropic") "claude-haiku-5-5" else aiModel) }
+            })
+            Text("Anthropic")
+            Spacer(Modifier.width(12.dp))
+            RadioButton(s.aiKind == "openai", {
+                vm.update { copy(aiKind = "openai", aiModel = if (aiKind != "openai") "gpt-4o-mini" else aiModel) }
+            })
+            Text("OpenAI-compatible")
+        }
+        OutlinedTextField(
+            value = s.aiKey,
+            onValueChange = { v -> vm.update { copy(aiKey = v.trim()) } },
+            label = { Text("API key") },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = s.aiModel,
+            onValueChange = { v -> vm.update { copy(aiModel = v.trim()) } },
+            label = { Text("Model") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = s.aiBaseUrl,
+            onValueChange = { v -> vm.update { copy(aiBaseUrl = v.trim()) } },
+            label = { Text("Base URL (optional)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Analyze chapters automatically as I read", Modifier.weight(1f))
+            Switch(s.aiAuto, { v -> vm.update { copy(aiAuto = v) } })
         }
         Spacer(Modifier.size(32.dp))
     }

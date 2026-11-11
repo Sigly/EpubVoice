@@ -5,7 +5,13 @@ data class Chapter(val title: String, val paragraphs: List<String>)
 data class Book(val title: String, val chapters: List<Chapter>)
 
 /** A piece of a paragraph. Quoted pieces are dialogue and may have a speaker. */
-data class Segment(val text: String, val isQuote: Boolean, val speaker: String? = null)
+data class Segment(
+    val text: String,
+    val isQuote: Boolean,
+    val speaker: String? = null,
+    /** true when the speaker is a guess rather than stated in the text */
+    val guess: Boolean = false
+)
 
 /** A user-defined HTTP text-to-speech service (OpenAI-compatible, Piper server, ElevenLabs, etc). */
 data class HttpProvider(
@@ -38,6 +44,12 @@ data class Settings(
     /** key "chapter:paragraph:segment" -> speaker name, or "" meaning "not dialogue" */
     val overrides: Map<String, String> = emptyMap(),
     val providers: List<HttpProvider> = emptyList(),
+    /** AI dialogue attribution: "anthropic" or "openai" (any OpenAI-compatible endpoint) */
+    val aiKind: String = "anthropic",
+    val aiBaseUrl: String = "",
+    val aiKey: String = "",
+    val aiModel: String = "claude-haiku-5-5",
+    val aiAuto: Boolean = false,
     val lastUri: String = "",
     val lastChapter: Int = 0,
     val lastParagraph: Int = 0

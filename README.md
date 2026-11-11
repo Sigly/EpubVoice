@@ -32,7 +32,13 @@ To build locally instead: install Android Studio or the Android SDK plus JDK 17,
 
 The app scans each chapter for quoted dialogue (straight or curly double quotes) and looks nearby for patterns like `said Harry`, `Harry said` or `Harry: "..."`. Quotes with no name nearby take the speaker from the same sentence, or alternate in a back-and-forth exchange. If a character is known by two names, use **Merge** on the Characters screen. If a line is wrong, long-press it in the reader and pick the right speaker, mark it as not dialogue, or set it back to auto.
 
-Limits: it does not understand single-quote dialogue, and it works best on prose that names speakers regularly. It is a heuristic, not language understanding, so expect to correct some lines.
+It also understands single curly quotes used for thoughts, treats action beats (`"Fine." Harry shrugged.`) as likely speakers, and for lines with no name nearby it picks the character mentioned most in the surrounding paragraphs. Those weaker calls are shown in italics so you can tell them from stated attributions.
+
+### AI attribution
+
+Settings > AI dialogue attribution takes an API key for Anthropic or any OpenAI-compatible service. Then, on the Characters screen, **Analyze chapter** (or **Next 10 chapters**) sends the chapter to the model, which decides who speaks or thinks every quoted line using the whole context. Results are saved per book on the phone, so each chapter is only paid for once. You can also turn on automatic analysis so the current and next chapters are analyzed as you read.
+
+Priority when sources disagree: your manual fix, then the AI, then the offline rules. The chapter text is sent to the provider you choose, and your key is stored only on the phone.
 
 ## Project layout
 

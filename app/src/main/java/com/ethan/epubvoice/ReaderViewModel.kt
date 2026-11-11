@@ -14,8 +14,12 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
 
 private val PALETTE = intArrayOf(
     0xFFFFD54F.toInt(), 0xFF81C784.toInt(), 0xFF64B5F6.toInt(), 0xFFE57373.toInt(),
@@ -46,8 +50,25 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         private set
     private var rank by mutableStateOf<Map<String, Int>>(emptyMap())
 
+    /** Bumped whenever speaker data changes so paragraphs re-render. */
+    var dataVersion by mutableIntStateOf(0)
+        private set
+
+    var aiBusy by mutableStateOf(false)
+        private set
+    var aiStatus by mutableStateOf<String?>(null)
+        private set
+
     private var raw: List<List<List<Segment>>> = emptyList()
     private var autoAliases: Map<String, String> = emptyMap()
+
+    /** "chapter:paragraph:segment" -> speaker from the AI pass ("" = not dialogue) */
+    private var aiMap: Map<String, String> = emptyMap()
+    private var aiDone: Set<Int> = emptySet()
+    private var aiJob: Job? = null
+    private var computeJob: Job? = null
+    private var autoChapter = -1
+
     private var engine: SpeechEngine? = null
     private var job: Job? = null
     private var playGen = 0
@@ -107,33 +128,161 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun canonical(n: String): String = settings.aliases[n] ?: autoAliases[n] ?: n
 
+    /** Priority: your manual fix, then the AI, then the offline rules. */
     fun effectiveSegments(ch: Int, p: Int): List<Segment> {
         val segs = raw.getOrNull(ch)?.getOrNull(p) ?: return emptyList()
         return segs.mapIndexed { i, seg ->
             if (!seg.isQuote) {
                 seg
             } else {
-                val o = settings.overrides["$ch:$p:$i"]
+                val key = "$ch:$p:$i"
+                val o = settings.overrides[key] ?: aiMap[key]
                 val base = when {
                     o == null -> seg.speaker
                     o.isEmpty() -> null
                     else -> o
                 }
-                seg.copy(speaker = base?.let { canonical(it) })
+                seg.copy(speaker = base?.let { canonical(it) }, guess = if (o != null) false else seg.guess)
             }
         }
     }
 
     private fun computeCharacters() {
-        val counts = LinkedHashMap<String, Int>()
-        for (c in raw.indices) for (p in raw[c].indices) {
-            for (seg in effectiveSegments(c, p)) {
-                if (seg.isQuote && seg.speaker != null) counts[seg.speaker] = (counts[seg.speaker] ?: 0) + 1
+        val ov = settings.overrides
+        val ai = aiMap
+        val aliases = settings.aliases
+        val snap = raw
+        computeJob?.cancel()
+        computeJob = viewModelScope.launch(Dispatchers.Default) {
+            val rawCounts = HashMap<String, Int>()
+            for (c in snap.indices) {
+                ensureActive()
+                for (p in snap[c].indices) {
+                    val segs = snap[c][p]
+                    for (i in segs.indices) {
+                        val seg = segs[i]
+                        if (!seg.isQuote) continue
+                        val key = "$c:$p:$i"
+                        val o = ov[key] ?: ai[key]
+                        val sp = when {
+                            o == null -> seg.speaker
+                            o.isEmpty() -> null
+                            else -> o
+                        }
+                        if (sp != null) rawCounts[sp] = (rawCounts[sp] ?: 0) + 1
+                    }
+                }
+            }
+            val auto = SpeakerDetector.autoAlias(rawCounts.keys)
+            val counts = LinkedHashMap<String, Int>()
+            for ((name, n) in rawCounts) {
+                val canon = aliases[name] ?: auto[name] ?: name
+                counts[canon] = (counts[canon] ?: 0) + n
+            }
+            val sorted = counts.entries.sortedByDescending { it.value }
+            withContext(Dispatchers.Main) {
+                autoAliases = auto
+                characters = sorted.map { it.key to it.value }
+                rank = sorted.mapIndexed { i, e -> e.key to i }.toMap()
+                dataVersion++
             }
         }
-        val sorted = counts.entries.sortedByDescending { it.value }
-        characters = sorted.map { it.key to it.value }
-        rank = sorted.mapIndexed { i, e -> e.key to i }.toMap()
+    }
+
+    // ---------- AI attribution ----------
+
+    private fun aiFile(): File = File(app.filesDir, "ai_${settings.lastUri.hashCode()}.json")
+
+    private fun loadAi() {
+        aiMap = emptyMap()
+        aiDone = emptySet()
+        try {
+            val f = aiFile()
+            if (!f.exists()) return
+            val j = JSONObject(f.readText())
+            val map = HashMap<String, String>()
+            j.optJSONObject("map")?.let { m -> for (k in m.keys()) map[k] = m.optString(k) }
+            val done = HashSet<Int>()
+            j.optJSONArray("done")?.let { a -> for (i in 0 until a.length()) done.add(a.optInt(i)) }
+            aiMap = map
+            aiDone = done
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun saveAi() {
+        try {
+            val j = JSONObject()
+            j.put("map", JSONObject().also { o -> aiMap.forEach { (k, v) -> o.put(k, v) } })
+            j.put("done", JSONArray().also { a -> aiDone.forEach { a.put(it) } })
+            aiFile().writeText(j.toString())
+        } catch (_: Exception) {
+        }
+    }
+
+    fun aiReady(): Boolean = settings.aiKey.isNotBlank() && settings.aiModel.isNotBlank()
+
+    fun aiChapterDone(ch: Int): Boolean = ch in aiDone
+
+    fun cancelAi() {
+        aiJob?.cancel()
+    }
+
+    /** Ask the AI who speaks each quote in chapters [from]..[to]. */
+    fun analyzeRange(from: Int, to: Int, force: Boolean = false) {
+        val b = book ?: return
+        if (aiBusy) return
+        if (!aiReady()) {
+            error = "Add your AI API key and model in Settings first"
+            return
+        }
+        val cfg = AiConfig(settings.aiKind, settings.aiBaseUrl, settings.aiKey, settings.aiModel)
+        val chapters = (from..to).filter { it in b.chapters.indices && (force || it !in aiDone) }
+        if (chapters.isEmpty()) {
+            aiStatus = "Already analyzed"
+            return
+        }
+        aiBusy = true
+        error = null
+        aiJob = viewModelScope.launch {
+            try {
+                for ((n, ch) in chapters.withIndex()) {
+                    aiStatus = "Analyzing chapter ${ch + 1} (${n + 1} of ${chapters.size})..."
+                    val paras = b.chapters[ch].paragraphs
+                    val quotes = paras.indices.map { p -> raw[ch][p].filter { it.isQuote }.map { it.text } }
+                    val known = characters.take(40).map { it.first }
+                    val res = AiAttributor.analyzeChapter(cfg, b.chapters[ch].title, paras, quotes, known)
+                    val add = HashMap<String, String>()
+                    for ((key, sp) in res) {
+                        val parts = key.split(":")
+                        val p = parts[0].toInt()
+                        val q = parts[1].toInt()
+                        val segIdx = raw[ch][p].withIndex().filter { it.value.isQuote }.map { it.index }.getOrNull(q - 1)
+                            ?: continue
+                        add["$ch:$p:$segIdx"] = sp ?: ""
+                    }
+                    aiMap = aiMap + add
+                    aiDone = aiDone + ch
+                    saveAi()
+                    computeCharacters()
+                }
+                aiStatus = "Done. Analyzed ${chapters.size} chapter(s)."
+            } catch (c: CancellationException) {
+                aiStatus = "Stopped"
+                throw c
+            } catch (t: Throwable) {
+                error = "AI analysis failed: ${t.message}"
+                aiStatus = null
+            } finally {
+                aiBusy = false
+            }
+        }
+    }
+
+    private fun maybeAutoAnalyze() {
+        if (!settings.aiAuto || !aiReady() || aiBusy || autoChapter == chapterIndex) return
+        autoChapter = chapterIndex
+        analyzeRange(chapterIndex, chapterIndex + 1)
     }
 
     // ---------- book loading ----------
@@ -145,6 +294,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     fun openBook(uri: Uri, restore: Boolean = false) {
         pause()
+        aiJob?.cancel()
         loading = true
         error = null
         viewModelScope.launch {
@@ -161,9 +311,13 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 autoAliases = det.autoAliases
                 chapterIndex = ch
                 paragraphIndex = pi
-                book = b
+                autoChapter = -1
                 update { copy(lastUri = uri.toString(), lastChapter = ch, lastParagraph = pi) }
+                loadAi()
+                book = b
+                aiStatus = null
                 computeCharacters()
+                maybeAutoAnalyze()
             } catch (t: Throwable) {
                 if (!restore) error = "Could not open the EPUB: ${t.message}"
             } finally {
@@ -183,6 +337,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         chapterIndex = c.coerceIn(0, b.chapters.size - 1)
         paragraphIndex = p.coerceIn(0, b.chapters[chapterIndex].paragraphs.size - 1)
         saveProgress()
+        maybeAutoAnalyze()
         if (was) play()
     }
 
@@ -230,11 +385,13 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                         if (chapterIndex + 1 < b.chapters.size) {
                             chapterIndex++
                             paragraphIndex = 0
+                            maybeAutoAnalyze()
                             continue
                         }
                         paragraphIndex = ch.paragraphs.size - 1
                         break
                     }
+                    maybeAutoAnalyze()
                     val text = ch.paragraphs[paragraphIndex]
                     if (text.none { it.isLetterOrDigit() }) {
                         paragraphIndex++

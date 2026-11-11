@@ -30,6 +30,11 @@ class Prefs(ctx: Context) {
             aliases = strMap(j.optJSONObject("aliases")),
             overrides = strMap(j.optJSONObject("overrides")),
             providers = providers(j.optJSONArray("providers")),
+            aiKind = j.optString("aiKind", d.aiKind),
+            aiBaseUrl = j.optString("aiBaseUrl", d.aiBaseUrl),
+            aiKey = j.optString("aiKey", d.aiKey),
+            aiModel = j.optString("aiModel", d.aiModel),
+            aiAuto = j.optBoolean("aiAuto", d.aiAuto),
             lastUri = j.optString("lastUri", ""),
             lastChapter = j.optInt("lastChapter", 0),
             lastParagraph = j.optInt("lastParagraph", 0)
@@ -65,6 +70,11 @@ class Prefs(ctx: Context) {
                 })
             }
         })
+        j.put("aiKind", s.aiKind)
+        j.put("aiBaseUrl", s.aiBaseUrl)
+        j.put("aiKey", s.aiKey)
+        j.put("aiModel", s.aiModel)
+        j.put("aiAuto", s.aiAuto)
         j.put("lastUri", s.lastUri)
         j.put("lastChapter", s.lastChapter)
         j.put("lastParagraph", s.lastParagraph)
