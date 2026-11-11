@@ -108,9 +108,10 @@ object AiAttributor {
             try {
                 return request(cfg, prompt)
             } catch (e: RetryableException) {
+                // Free tiers rate-limit hard, so back off for a while before giving up.
                 attempt++
-                if (attempt >= 3) throw IOException(e.message)
-                delay(5000L * attempt)
+                if (attempt >= 5) throw IOException(e.message)
+                delay(15000L * attempt)
             }
         }
     }

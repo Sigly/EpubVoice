@@ -29,7 +29,7 @@ class PlaybackService : Service() {
         )
         val notification = Notification.Builder(this, "reading")
             .setContentTitle("EpubVoice")
-            .setContentText("Reading aloud")
+            .setContentText(intent?.getStringExtra("text") ?: "Reading aloud")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentIntent(open)
             .setOngoing(true)

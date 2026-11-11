@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -59,6 +60,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -312,6 +314,34 @@ fun CharactersScreen(vm: ReaderViewModel, back: () -> Unit) {
     val s = vm.settings
     var pick by remember { mutableStateOf<String?>(null) } // "narration", "dialogue" or a character name
     var merging by remember { mutableStateOf<String?>(null) }
+    var showWhole by remember { mutableStateOf(false) }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) vm.exportBackup(uri)
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.importBackup(uri)
+    }
+
+    if (showWhole) {
+        val remaining = vm.aiRemaining()
+        AlertDialog(
+            onDismissRequest = { showWhole = false },
+            title = { Text("Analyze the whole book?") },
+            text = {
+                Text(
+                    "$remaining chapters still need analysis. " +
+                        (if (s.aiKind == "anthropic")
+                            "Anthropic bills per use, roughly a tenth of a cent per chapter (an estimate, about $${"%.2f".format(remaining * 0.001)} total). "
+                        else
+                            "Free tiers have daily limits and may stop partway. ") +
+                        "It runs in the background with a notification, saves as it goes, and you can stop and resume any time. " +
+                        "The pause between requests is set in Settings."
+                )
+            },
+            confirmButton = { TextButton({ showWhole = false; vm.analyzeWholeBook() }) { Text("Start") } },
+            dismissButton = { TextButton({ showWhole = false }) { Text("Cancel") } }
+        )
+    }
 
     Column(Modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -341,8 +371,14 @@ fun CharactersScreen(vm: ReaderViewModel, back: () -> Unit) {
                             Text("Next 10 chapters")
                         }
                         Spacer(Modifier.width(8.dp))
+                        OutlinedButton({ showWhole = true }, enabled = !vm.aiBusy) { Text("Whole book") }
+                        Spacer(Modifier.width(8.dp))
                         OutlinedButton({ vm.cancelAi() }, enabled = vm.aiBusy) { Text("Stop") }
                     }
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    TextButton({ exportLauncher.launch("epubvoice-backup.json") }) { Text("Back up") }
+                    TextButton({ importLauncher.launch(arrayOf("*/*")) }) { Text("Restore backup") }
                 }
                 if (vm.aiBusy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp))
                 vm.aiStatus?.let { Text(it, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)) }
@@ -530,6 +566,27 @@ fun SettingsScreen(vm: ReaderViewModel, back: () -> Unit) {
                 "Your key is stored only on this phone.",
             fontSize = 12.sp
         )
+        Row(Modifier.horizontalScroll(rememberScrollState())) {
+            OutlinedButton({
+                vm.update {
+                    copy(
+                        aiKind = "openai",
+                        aiBaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai/",
+                        aiModel = "gemini-2.5-flash",
+                        aiParallel = 1,
+                        aiDelay = 5
+                    )
+                }
+            }) { Text("Use Google Gemini (free tier)") }
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton({
+                vm.update { copy(aiKind = "anthropic", aiBaseUrl = "", aiModel = "claude-haiku-5-5", aiParallel = 2, aiDelay = 1) }
+            }) { Text("Use Anthropic") }
+        }
+        Text(
+            "Gemini: get a free key at aistudio.google.com, paste it below. Free-tier content may be used by Google to improve its products.",
+            fontSize = 12.sp
+        )
         Row(verticalAlignment = Alignment.CenterVertically) {
             RadioButton(s.aiKind == "anthropic", {
                 vm.update { copy(aiKind = "anthropic", aiModel = if (aiKind != "anthropic") "claude-haiku-5-5" else aiModel) }
@@ -563,6 +620,25 @@ fun SettingsScreen(vm: ReaderViewModel, back: () -> Unit) {
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = s.aiParallel.toString(),
+                onValueChange = { v -> v.toIntOrNull()?.let { n -> vm.update { copy(aiParallel = n.coerceIn(1, 8)) } } },
+                label = { Text("At once") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(8.dp))
+            OutlinedTextField(
+                value = s.aiDelay.toString(),
+                onValueChange = { v -> v.toIntOrNull()?.let { n -> vm.update { copy(aiDelay = n.coerceIn(0, 120)) } } },
+                label = { Text("Seconds between batches") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.weight(1f)
+            )
+        }
         Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Analyze chapters automatically as I read", Modifier.weight(1f))
             Switch(s.aiAuto, { v -> vm.update { copy(aiAuto = v) } })

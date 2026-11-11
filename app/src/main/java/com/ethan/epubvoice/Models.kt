@@ -50,6 +50,9 @@ data class Settings(
     val aiKey: String = "",
     val aiModel: String = "claude-haiku-5-5",
     val aiAuto: Boolean = false,
+    /** chapters analyzed at the same time, and seconds to wait between batches (free tiers need 1 and a few seconds) */
+    val aiParallel: Int = 1,
+    val aiDelay: Int = 4,
     val lastUri: String = "",
     val lastChapter: Int = 0,
     val lastParagraph: Int = 0

@@ -38,6 +38,12 @@ It also understands single curly quotes used for thoughts, treats action beats (
 
 Settings > AI dialogue attribution takes an API key for Anthropic or any OpenAI-compatible service. Then, on the Characters screen, **Analyze chapter** (or **Next 10 chapters**) sends the chapter to the model, which decides who speaks or thinks every quoted line using the whole context. Results are saved per book on the phone, so each chapter is only paid for once. You can also turn on automatic analysis so the current and next chapters are analyzed as you read.
 
+**Free option:** Google's Gemini API has a free tier. In Settings, press "Use Google Gemini (free tier)" and paste a key from aistudio.google.com. Keep "At once" at 1 and the delay at a few seconds so you stay under the free rate limits. Free-tier content may be used by Google to improve its products.
+
+**Whole book:** the Characters screen has a "Whole book" button that runs in the background with a notification, saves after every batch, and resumes where it stopped if you hit a limit or press Stop. "Back up" and "Restore backup" save and load the AI results, your manual fixes, aliases and colors as a JSON file. Backups match the app version that made them, so restore with the same version when possible.
+
+Builds are signed with a fixed debug key (`app/debug.keystore`), so each new APK installs over the old one. This key is public in the repo, which is fine for a personal sideloaded app.
+
 Priority when sources disagree: your manual fix, then the AI, then the offline rules. The chapter text is sent to the provider you choose, and your key is stored only on the phone.
 
 ## Project layout

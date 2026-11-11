@@ -35,6 +35,8 @@ class Prefs(ctx: Context) {
             aiKey = j.optString("aiKey", d.aiKey),
             aiModel = j.optString("aiModel", d.aiModel),
             aiAuto = j.optBoolean("aiAuto", d.aiAuto),
+            aiParallel = j.optInt("aiParallel", d.aiParallel),
+            aiDelay = j.optInt("aiDelay", d.aiDelay),
             lastUri = j.optString("lastUri", ""),
             lastChapter = j.optInt("lastChapter", 0),
             lastParagraph = j.optInt("lastParagraph", 0)
@@ -75,6 +77,8 @@ class Prefs(ctx: Context) {
         j.put("aiKey", s.aiKey)
         j.put("aiModel", s.aiModel)
         j.put("aiAuto", s.aiAuto)
+        j.put("aiParallel", s.aiParallel)
+        j.put("aiDelay", s.aiDelay)
         j.put("lastUri", s.lastUri)
         j.put("lastChapter", s.lastChapter)
         j.put("lastParagraph", s.lastParagraph)

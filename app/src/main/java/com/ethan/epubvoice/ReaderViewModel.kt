@@ -14,6 +14,10 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -244,38 +248,133 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         }
         aiBusy = true
         error = null
+        updateService()
         aiJob = viewModelScope.launch {
             try {
-                for ((n, ch) in chapters.withIndex()) {
-                    aiStatus = "Analyzing chapter ${ch + 1} (${n + 1} of ${chapters.size})..."
-                    val paras = b.chapters[ch].paragraphs
-                    val quotes = paras.indices.map { p -> raw[ch][p].filter { it.isQuote }.map { it.text } }
-                    val known = characters.take(40).map { it.first }
-                    val res = AiAttributor.analyzeChapter(cfg, b.chapters[ch].title, paras, quotes, known)
-                    val add = HashMap<String, String>()
-                    for ((key, sp) in res) {
-                        val parts = key.split(":")
-                        val p = parts[0].toInt()
-                        val q = parts[1].toInt()
-                        val segIdx = raw[ch][p].withIndex().filter { it.value.isQuote }.map { it.index }.getOrNull(q - 1)
-                            ?: continue
-                        add["$ch:$p:$segIdx"] = sp ?: ""
+                val par = settings.aiParallel.coerceIn(1, 8)
+                var finished = 0
+                for (batch in chapters.chunked(par)) {
+                    aiStatus = "Analyzing chapter ${batch.first() + 1} ($finished of ${chapters.size} done)..."
+                    updateService()
+                    val results = coroutineScope {
+                        batch.map { ch -> async { ch to analyzeOne(cfg, b, ch) } }.awaitAll()
                     }
-                    aiMap = aiMap + add
-                    aiDone = aiDone + ch
+                    for ((ch, add) in results) {
+                        aiMap = aiMap + add
+                        aiDone = aiDone + ch
+                    }
+                    finished += batch.size
                     saveAi()
                     computeCharacters()
+                    if (settings.aiDelay > 0) delay(settings.aiDelay * 1000L)
                 }
                 aiStatus = "Done. Analyzed ${chapters.size} chapter(s)."
             } catch (c: CancellationException) {
-                aiStatus = "Stopped"
+                aiStatus = "Stopped. Progress is saved; press the button again to resume."
                 throw c
             } catch (t: Throwable) {
-                error = "AI analysis failed: ${t.message}"
+                error = "AI analysis stopped: ${t.message}. Progress is saved; press the button again to resume."
                 aiStatus = null
             } finally {
                 aiBusy = false
+                updateService()
             }
+        }
+    }
+
+    private suspend fun analyzeOne(cfg: AiConfig, b: Book, ch: Int): Map<String, String> {
+        val paras = b.chapters[ch].paragraphs
+        val quotes = paras.indices.map { p -> raw[ch][p].filter { it.isQuote }.map { it.text } }
+        val known = characters.take(40).map { it.first }
+        val res = AiAttributor.analyzeChapter(cfg, b.chapters[ch].title, paras, quotes, known)
+        val add = HashMap<String, String>()
+        for ((key, sp) in res) {
+            val parts = key.split(":")
+            val p = parts[0].toInt()
+            val q = parts[1].toInt()
+            val segIdx = raw[ch][p].withIndex().filter { it.value.isQuote }.map { it.index }.getOrNull(q - 1)
+                ?: continue
+            add["$ch:$p:$segIdx"] = sp ?: ""
+        }
+        return add
+    }
+
+    /** Chapters that still have no AI result. */
+    fun aiRemaining(): Int = (book?.chapters?.size ?: 0) - aiDone.size
+
+    fun analyzeWholeBook() {
+        val n = book?.chapters?.size ?: return
+        analyzeRange(0, n - 1)
+    }
+
+    // ---------- backup ----------
+
+    private fun mapOfStrings(o: JSONObject?): Map<String, String> {
+        val out = HashMap<String, String>()
+        if (o != null) for (k in o.keys()) out[k] = o.optString(k)
+        return out
+    }
+
+    fun exportBackup(uri: Uri) {
+        val ai = aiMap
+        val done = aiDone
+        val s = settings
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val j = JSONObject()
+                j.put("app", "EpubVoice")
+                j.put("version", 1)
+                j.put("ai", JSONObject().also { o -> ai.forEach { (k, v) -> o.put(k, v) } })
+                j.put("done", JSONArray().also { a -> done.forEach { a.put(it) } })
+                j.put("overrides", JSONObject().also { o -> s.overrides.forEach { (k, v) -> o.put(k, v) } })
+                j.put("aliases", JSONObject().also { o -> s.aliases.forEach { (k, v) -> o.put(k, v) } })
+                j.put("speakerColors", JSONObject().also { o -> s.speakerColors.forEach { (k, v) -> o.put(k, v) } })
+                app.contentResolver.openOutputStream(uri, "wt")?.use { it.write(j.toString().toByteArray(Charsets.UTF_8)) }
+                    ?: throw IllegalStateException("Cannot write the file")
+                withContext(Dispatchers.Main) { aiStatus = "Backup saved" }
+            } catch (t: Throwable) {
+                withContext(Dispatchers.Main) { error = "Backup failed: ${t.message}" }
+            }
+        }
+    }
+
+    fun importBackup(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val text = app.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                    ?: throw IllegalStateException("Cannot read the file")
+                val j = JSONObject(text)
+                if (j.optString("app") != "EpubVoice") throw IllegalStateException("Not an EpubVoice backup")
+                val ai = mapOfStrings(j.optJSONObject("ai"))
+                val ov = mapOfStrings(j.optJSONObject("overrides"))
+                val al = mapOfStrings(j.optJSONObject("aliases"))
+                val sc = HashMap<String, Int>()
+                j.optJSONObject("speakerColors")?.let { o -> for (k in o.keys()) sc[k] = o.optInt(k) }
+                val done = HashSet<Int>()
+                j.optJSONArray("done")?.let { a -> for (i in 0 until a.length()) done.add(a.optInt(i)) }
+                withContext(Dispatchers.Main) {
+                    aiMap = aiMap + ai
+                    aiDone = aiDone + done
+                    update { copy(overrides = overrides + ov, aliases = aliases + al, speakerColors = speakerColors + sc) }
+                    saveAi()
+                    computeCharacters()
+                    aiStatus = "Backup restored"
+                }
+            } catch (t: Throwable) {
+                withContext(Dispatchers.Main) { error = "Restore failed: ${t.message}" }
+            }
+        }
+    }
+
+    // ---------- background service ----------
+
+    private fun updateService() {
+        val i = Intent(app, PlaybackService::class.java)
+        if (playing || aiBusy) {
+            i.putExtra("text", if (aiBusy) (aiStatus ?: "Analyzing dialogue") else "Reading aloud")
+            ContextCompat.startForegroundService(app, i)
+        } else {
+            app.stopService(i)
         }
     }
 
@@ -374,7 +473,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         if (playing) return
         playing = true
         error = null
-        ContextCompat.startForegroundService(app, Intent(app, PlaybackService::class.java))
+        updateService()
         val gen = ++playGen
         job = viewModelScope.launch {
             try {
@@ -412,7 +511,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             } finally {
                 if (gen == playGen) {
                     playing = false
-                    app.stopService(Intent(app, PlaybackService::class.java))
+                    updateService()
                 }
             }
         }
@@ -431,7 +530,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         job = null
         if (playing) {
             playing = false
-            app.stopService(Intent(app, PlaybackService::class.java))
+            updateService()
             saveProgress()
         }
     }
