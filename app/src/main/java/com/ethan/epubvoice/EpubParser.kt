@@ -37,7 +37,7 @@ object EpubParser {
 
                 val items = opf.select("manifest > item")
                 val coverId = opf.select("meta[name=cover]").firstOrNull()?.attr("content").orEmpty()
-                val images = items.filter { it.attr("media-type").startsWith("image/") }
+                val images = items.toList().filter { it.attr("media-type").startsWith("image/") }
                 val pick = items.firstOrNull { it.attr("properties").contains("cover-image") }
                     ?: images.firstOrNull { coverId.isNotEmpty() && it.attr("id") == coverId }
                     ?: images.firstOrNull { it.attr("id").contains("cover", true) || it.attr("href").contains("cover", true) }
