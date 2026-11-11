@@ -146,7 +146,15 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     o.isEmpty() -> null
                     else -> o
                 }
-                seg.copy(speaker = base?.let { canonical(it) }, guess = if (o != null) false else seg.guess)
+                seg.copy(
+                    speaker = base?.let { canonical(it) },
+                    guess = if (o != null) false else seg.guess,
+                    scare = when {
+                        o == null -> seg.scare
+                        o.isEmpty() -> true
+                        else -> false
+                    }
+                )
             }
         }
     }

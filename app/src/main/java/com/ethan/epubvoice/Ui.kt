@@ -208,8 +208,8 @@ fun ParagraphView(
     val text = remember(segs, s.narration, s.dialogue, s.speakerColors, s.autoColors, vm.dataVersion) {
         buildAnnotatedString {
             for (seg in segs) {
-                val c = if (seg.isQuote) vm.colorFor(seg.speaker) else s.narration
-                val style = if (seg.isQuote && seg.guess) {
+                val c = if (seg.isQuote && !seg.scare) vm.colorFor(seg.speaker) else s.narration
+                val style = if (seg.isQuote && seg.guess && !seg.scare) {
                     SpanStyle(color = Color(c), fontStyle = FontStyle.Italic)
                 } else {
                     SpanStyle(color = Color(c))

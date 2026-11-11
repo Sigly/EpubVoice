@@ -30,9 +30,9 @@ To build locally instead: install Android Studio or the Android SDK plus JDK 17,
 
 ### How speaker detection works
 
-The app scans each chapter for quoted dialogue (straight or curly double quotes) and looks nearby for patterns like `said Harry`, `Harry said` or `Harry: "..."`. Quotes with no name nearby take the speaker from the same sentence, or alternate in a back-and-forth exchange. If a character is known by two names, use **Merge** on the Characters screen. If a line is wrong, long-press it in the reader and pick the right speaker, mark it as not dialogue, or set it back to auto.
+The app first finds the book's characters (capitalized words that act like people, such as `Lorex roared` or `Mia looked`). For every quote it then scores the nearby characters with a small model trained on hand-labeled chapters: who is named with a speech verb (`said Harry`), who is the subject of a beat before or after the quote (`Lorex roared.`), who was just addressed by the previous line, who spoke last (so a conversation alternates), who the surrounding scene is about, and, for thoughts in single curly quotes, whose point of view it is. Quoted terms, titles and system windows are recognized and kept in the narration color.
 
-It also understands single curly quotes used for thoughts, treats action beats (`"Fine." Harry shrugged.`) as likely speakers, and for lines with no name nearby it picks the character mentioned most in the surrounding paragraphs. Those weaker calls are shown in italics so you can tell them from stated attributions.
+Confident calls are shown normally and weaker ones in italics, and quotes it cannot place stay in the unknown-dialogue color. If a character is known by two names, use **Merge** on the Characters screen. If a line is wrong, long-press it in the reader and pick the right speaker, mark it as not dialogue, or set it back to auto.
 
 ### AI attribution
 

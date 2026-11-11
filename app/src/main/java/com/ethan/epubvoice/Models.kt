@@ -10,7 +10,9 @@ data class Segment(
     val isQuote: Boolean,
     val speaker: String? = null,
     /** true when the speaker is a guess rather than stated in the text */
-    val guess: Boolean = false
+    val guess: Boolean = false,
+    /** true for quoted terms, titles and system text that are not speech */
+    val scare: Boolean = false
 )
 
 /** A user-defined HTTP text-to-speech service (OpenAI-compatible, Piper server, ElevenLabs, etc). */
