@@ -338,20 +338,113 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /**
+     * Writes chapters as plain text for a chat with Claude. Each quote is listed as Q1, Q2... under its
+     * paragraph, and the header explains the short reply format that [importBackup] understands.
+     */
+    fun exportForClaude(uri: Uri, from: Int, count: Int) {
+        val b = book ?: return
+        if (from >= b.chapters.size) {
+            error = "That chapter does not exist. The book has ${b.chapters.size} chapters."
+            return
+        }
+        val last = (from + count - 1).coerceAtMost(b.chapters.size - 1)
+        val known = characters.take(40).map { it.first }
+        val snap = raw
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val sb = StringBuilder()
+                sb.append("EPUBVOICE DIALOGUE ATTRIBUTION TASK\n")
+                sb.append("Book: ").append(b.title).append('\n')
+                sb.append("Claude: below are chapters of a novel. Under each paragraph, lines Q1, Q2, ... show the quoted spans in it.\n")
+                sb.append("For every Q, decide who speaks or silently thinks it, using the whole context.\n")
+                sb.append("Use the character's most complete common name, spelled the same way every time. ")
+                sb.append("Use \"System\" for game or system messages. Use - when it is not a character's speech or thought (a title, a scare quote, quoted text from a document).\n")
+                if (known.isNotEmpty()) sb.append("Known characters so far: ").append(known.joinToString(", ")).append('\n')
+                sb.append("\nREPLY FORMAT: create a plain text file named epubvoice-ai.txt and send it to the user with the file-sending tool. Its content is exactly:\n")
+                sb.append("EPUBVOICE-AI 1\n")
+                sb.append("#<chapter number shown after CHAPTER>\n")
+                sb.append("<paragraph number>: <name for Q1> | <name for Q2> | ...\n")
+                sb.append("Only list paragraphs that have a Q. Give one name per Q, in order, separated by |. Write a #<chapter> line for every chapter you analyzed, even if it has no quotes. Example:\n")
+                sb.append("EPUBVOICE-AI 1\n#719\n12: Agnus\n13: Bob | Bob | -\n#720\n3: System\n")
+                sb.append("Then tell the user to open EpubVoice > Characters > Restore backup and pick that file.\n")
+                for (ch in from..last) {
+                    sb.append("\n=== CHAPTER ").append(ch).append(" (the app shows it as chapter ").append(ch + 1)
+                        .append("): ").append(b.chapters[ch].title).append(" ===\n")
+                    val paras = b.chapters[ch].paragraphs
+                    for (p in paras.indices) {
+                        sb.append('[').append(p).append("] ").append(paras[p]).append('\n')
+                        var q = 0
+                        for (seg in snap[ch][p]) {
+                            if (!seg.isQuote) continue
+                            q++
+                            sb.append("  Q").append(q).append(": ").append(seg.text.take(90)).append('\n')
+                        }
+                    }
+                }
+                app.contentResolver.openOutputStream(uri, "wt")?.use { it.write(sb.toString().toByteArray(Charsets.UTF_8)) }
+                    ?: throw IllegalStateException("Cannot write the file")
+                withContext(Dispatchers.Main) {
+                    aiStatus = "Saved chapters ${from + 1} to ${last + 1}. Attach the file in a chat with Claude."
+                }
+            } catch (t: Throwable) {
+                withContext(Dispatchers.Main) { error = "Export failed: ${t.message}" }
+            }
+        }
+    }
+
+    /** Parses Claude's short reply format into the same keys the app uses. */
+    private fun parseShortFormat(text: String): Pair<Map<String, String>, Set<Int>> {
+        val map = HashMap<String, String>()
+        val done = HashSet<Int>()
+        var ch = -1
+        for (raw0 in text.lines()) {
+            val line = raw0.trim()
+            if (line.isEmpty()) continue
+            if (line.startsWith("#")) {
+                ch = line.removePrefix("#").trim().toIntOrNull() ?: -1
+                if (ch in raw.indices) done.add(ch)
+                continue
+            }
+            if (ch !in raw.indices) continue
+            val idx = line.indexOf(':')
+            if (idx < 0) continue
+            val p = line.substring(0, idx).trim().toIntOrNull() ?: continue
+            if (p < 0 || p >= raw[ch].size) continue
+            val quoteSegs = raw[ch][p].withIndex().filter { it.value.isQuote }.map { it.index }
+            for ((q, nm) in line.substring(idx + 1).split("|").withIndex()) {
+                val seg = quoteSegs.getOrNull(q) ?: break
+                val n = nm.trim()
+                map["$ch:$p:$seg"] = if (n == "-") "" else n
+            }
+        }
+        return map to done
+    }
+
     fun importBackup(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val text = app.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                     ?: throw IllegalStateException("Cannot read the file")
-                val j = JSONObject(text)
-                if (j.optString("app") != "EpubVoice") throw IllegalStateException("Not an EpubVoice backup")
-                val ai = mapOfStrings(j.optJSONObject("ai"))
-                val ov = mapOfStrings(j.optJSONObject("overrides"))
-                val al = mapOfStrings(j.optJSONObject("aliases"))
+                val ai: Map<String, String>
+                var ov: Map<String, String> = emptyMap()
+                var al: Map<String, String> = emptyMap()
                 val sc = HashMap<String, Int>()
-                j.optJSONObject("speakerColors")?.let { o -> for (k in o.keys()) sc[k] = o.optInt(k) }
                 val done = HashSet<Int>()
-                j.optJSONArray("done")?.let { a -> for (i in 0 until a.length()) done.add(a.optInt(i)) }
+                if (text.trimStart().startsWith("{")) {
+                    val j = JSONObject(text)
+                    if (j.optString("app") != "EpubVoice") throw IllegalStateException("Not an EpubVoice backup")
+                    ai = mapOfStrings(j.optJSONObject("ai"))
+                    ov = mapOfStrings(j.optJSONObject("overrides"))
+                    al = mapOfStrings(j.optJSONObject("aliases"))
+                    j.optJSONObject("speakerColors")?.let { o -> for (k in o.keys()) sc[k] = o.optInt(k) }
+                    j.optJSONArray("done")?.let { a -> for (i in 0 until a.length()) done.add(a.optInt(i)) }
+                } else {
+                    if (!text.trimStart().startsWith("EPUBVOICE-AI")) throw IllegalStateException("Not an EpubVoice file")
+                    val parsed = parseShortFormat(text)
+                    ai = parsed.first
+                    done.addAll(parsed.second)
+                }
                 withContext(Dispatchers.Main) {
                     aiMap = aiMap + ai
                     aiDone = aiDone + done

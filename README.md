@@ -42,6 +42,8 @@ Settings > AI dialogue attribution takes an API key for Anthropic or any OpenAI-
 
 **Whole book:** the Characters screen has a "Whole book" button that runs in the background with a notification, saves after every batch, and resumes where it stopped if you hit a limit or press Stop. "Back up" and "Restore backup" save and load the AI results, your manual fixes, aliases and colors as a JSON file. Backups match the app version that made them, so restore with the same version when possible.
 
+**Use Claude chat instead of an API:** on the Characters screen, **Export for Claude** saves a text file of the chapters you pick (40 by default). Attach it in a chat with Claude and ask it to analyze the dialogue. It sends back `epubvoice-ai.txt`, and **Restore backup** applies it. No API key or per-use charge, just your normal Claude usage.
+
 Builds are signed with a fixed debug key (`app/debug.keystore`), so each new APK installs over the old one. This key is public in the repo, which is fine for a personal sideloaded app.
 
 Priority when sources disagree: your manual fix, then the AI, then the offline rules. The chapter text is sent to the provider you choose, and your key is stored only on the phone.

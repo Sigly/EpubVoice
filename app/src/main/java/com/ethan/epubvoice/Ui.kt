@@ -321,6 +321,54 @@ fun CharactersScreen(vm: ReaderViewModel, back: () -> Unit) {
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) vm.importBackup(uri)
     }
+    var showExport by remember { mutableStateOf(false) }
+    var pendingExport by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    val claudeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        val pe = pendingExport
+        if (uri != null && pe != null) vm.exportForClaude(uri, pe.first, pe.second)
+        pendingExport = null
+    }
+
+    if (showExport) {
+        var first by remember { mutableStateOf((vm.chapterIndex + 1).toString()) }
+        var count by remember { mutableStateOf("40") }
+        AlertDialog(
+            onDismissRequest = { showExport = false },
+            title = { Text("Export chapters for Claude") },
+            text = {
+                Column {
+                    Text(
+                        "Saves a text file of these chapters. Attach it in a chat with Claude and ask it to analyze the dialogue, then use Restore backup on the file it sends back.",
+                        fontSize = 13.sp
+                    )
+                    OutlinedTextField(
+                        value = first,
+                        onValueChange = { first = it },
+                        label = { Text("First chapter") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = count,
+                        onValueChange = { count = it },
+                        label = { Text("How many chapters") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton({
+                    val f = ((first.toIntOrNull() ?: 1).coerceAtLeast(1)) - 1
+                    val c = (count.toIntOrNull() ?: 40).coerceIn(1, 200)
+                    pendingExport = f to c
+                    showExport = false
+                    claudeLauncher.launch("claude-chapters-${f + 1}-${f + c}.txt")
+                }) { Text("Save file") }
+            },
+            dismissButton = { TextButton({ showExport = false }) { Text("Cancel") } }
+        )
+    }
 
     if (showWhole) {
         val remaining = vm.aiRemaining()
@@ -377,6 +425,7 @@ fun CharactersScreen(vm: ReaderViewModel, back: () -> Unit) {
                     }
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    TextButton({ showExport = true }, enabled = vm.book != null) { Text("Export for Claude") }
                     TextButton({ exportLauncher.launch("epubvoice-backup.json") }) { Text("Back up") }
                     TextButton({ importLauncher.launch(arrayOf("*/*")) }) { Text("Restore backup") }
                 }
