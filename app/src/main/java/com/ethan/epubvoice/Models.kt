@@ -54,6 +54,8 @@ data class Settings(
     val rate: Float = 1.0f,
     val pitch: Float = 1.0f,
     val autoColors: Boolean = true,
+    /** color a character's dialogue by the hair or eye color the text gives them */
+    val lookColors: Boolean = true,
     val speakerColors: Map<String, Int> = emptyMap(),
     val aliases: Map<String, String> = emptyMap(),
     /** key "chapter:paragraph:segment" -> speaker name, or "" meaning "not dialogue" */

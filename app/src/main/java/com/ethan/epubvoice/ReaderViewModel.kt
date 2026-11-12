@@ -147,6 +147,12 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         private set
     private var rank by mutableStateOf<Map<String, Int>>(emptyMap())
 
+    /** Hair or eye color the text gives each character, and the dialogue colors made from it. */
+    var looks by mutableStateOf<Map<String, Look>>(emptyMap())
+        private set
+    private var lookColors by mutableStateOf<Map<String, Int>>(emptyMap())
+    private var lookBook = ""
+
     /** Bumped whenever speaker data changes so paragraphs re-render. */
     var dataVersion by mutableIntStateOf(0)
         private set
@@ -189,7 +195,17 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         if (bookId.isNotEmpty()) lib.saveBookData(bookId, settings.overrides, settings.aliases, settings.speakerColors)
     }
 
-    fun setColor(key: String, color: Int) = update {
+    fun setColor(key: String, color: Int) {
+        setColorRaw(key, color)
+        if (key == "background") refreshLooks()
+    }
+
+    fun refreshLooks() {
+        lookColors = Appearance.finalColors(looks, characters.map { it.first }, Color(settings.background).luminance() < 0.5f)
+        dataVersion++
+    }
+
+    private fun setColorRaw(key: String, color: Int) = update {
         when (key) {
             "background" -> copy(background = color)
             "narration" -> copy(narration = color)
@@ -218,6 +234,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun colorFor(speaker: String?): Int {
         if (speaker == null) return settings.dialogue
         settings.speakerColors[speaker]?.let { return it }
+        if (settings.lookColors) lookColors[speaker]?.let { return it }
         if (settings.autoColors) rank[speaker]?.let {
             val pal = if (Color(settings.background).luminance() > 0.5f) PALETTE_LIGHT else PALETTE
             return pal[it % pal.size]
@@ -261,6 +278,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val ai = aiMap
         val aliases = settings.aliases
         val snap = raw
+        val bk = book
+        val id = bookId
+        val needScan = lookBook != bookId
         computeJob?.cancel()
         computeJob = viewModelScope.launch(Dispatchers.Default) {
             val rawCounts = HashMap<String, Int>()
@@ -289,10 +309,16 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 counts[canon] = (counts[canon] ?: 0) + n
             }
             val sorted = counts.entries.sortedByDescending { it.value }
+            val rawLooks = if (bk != null && needScan) Appearance.scan(bk, sorted.map { it.key }.take(120)) else null
             withContext(Dispatchers.Main) {
                 autoAliases = auto
                 characters = sorted.map { it.key to it.value }
                 rank = sorted.mapIndexed { i, e -> e.key to i }.toMap()
+                if (rawLooks != null) {
+                    looks = rawLooks
+                    lookBook = id
+                }
+                lookColors = Appearance.finalColors(looks, sorted.map { it.key }, Color(settings.background).luminance() < 0.5f)
                 dataVersion++
             }
         }

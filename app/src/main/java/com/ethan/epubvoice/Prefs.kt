@@ -28,6 +28,7 @@ class Prefs(ctx: Context) {
             rate = j.optDouble("rate", d.rate.toDouble()).toFloat(),
             pitch = j.optDouble("pitch", d.pitch.toDouble()).toFloat(),
             autoColors = j.optBoolean("autoColors", d.autoColors),
+            lookColors = j.optBoolean("lookColors", d.lookColors),
             speakerColors = intMap(j.optJSONObject("speakerColors")),
             aliases = strMap(j.optJSONObject("aliases")),
             overrides = strMap(j.optJSONObject("overrides")),
@@ -59,6 +60,7 @@ class Prefs(ctx: Context) {
         j.put("rate", s.rate.toDouble())
         j.put("pitch", s.pitch.toDouble())
         j.put("autoColors", s.autoColors)
+        j.put("lookColors", s.lookColors)
         j.put("speakerColors", JSONObject().also { o -> s.speakerColors.forEach { (k, v) -> o.put(k, v) } })
         j.put("aliases", JSONObject().also { o -> s.aliases.forEach { (k, v) -> o.put(k, v) } })
         j.put("overrides", JSONObject().also { o -> s.overrides.forEach { (k, v) -> o.put(k, v) } })

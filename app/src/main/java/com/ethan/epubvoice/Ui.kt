@@ -240,6 +240,10 @@ fun CharactersScreen(vm: ReaderViewModel, back: () -> Unit) {
                     Text("Auto-assign colors to characters", Modifier.weight(1f))
                     Switch(s.autoColors, { vm.update { copy(autoColors = it) } })
                 }
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Color by hair or eye color found in the text", Modifier.weight(1f))
+                    Switch(s.lookColors, { vm.update { copy(lookColors = it) }; vm.refreshLooks() })
+                }
                 Row {
                     TextButton({ vm.update { copy(speakerColors = emptyMap()) } }) { Text("Reset character colors") }
                 }
@@ -256,7 +260,7 @@ fun CharactersScreen(vm: ReaderViewModel, back: () -> Unit) {
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(name, color = Color(vm.colorFor(name)), fontWeight = FontWeight.Bold)
-                        Text("$count lines", fontSize = 12.sp)
+                        Text("$count lines" + (vm.looks[name]?.let { "  \u00b7  ${it.label}" } ?: ""), fontSize = 12.sp)
                     }
                     TextButton({ merging = name }) { Text("Merge") }
                     if (s.speakerColors.containsKey(name)) {

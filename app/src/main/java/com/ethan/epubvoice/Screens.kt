@@ -371,7 +371,7 @@ fun ParagraphView(
         var acc = 0
         segs.map { acc += it.text.length; acc }
     }
-    val text = remember(segs, s.narration, s.dialogue, s.speakerColors, s.autoColors, vm.dataVersion) {
+    val text = remember(segs, s.narration, s.dialogue, s.speakerColors, s.autoColors, s.lookColors, vm.dataVersion) {
         buildAnnotatedString {
             for (seg in segs) {
                 val c = if (seg.isQuote && !seg.scare) vm.colorFor(seg.speaker) else s.narration
