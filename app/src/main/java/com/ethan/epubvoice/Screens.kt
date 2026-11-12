@@ -363,7 +363,7 @@ fun ParagraphView(
     onLongQuote: (Int) -> Unit
 ) {
     val s = vm.settings
-    val segs = remember(vm.book, s, ch, p, vm.dataVersion) { vm.effectiveSegments(ch, p) }
+    val segs = remember(vm.book, s.overrides, s.aliases, ch, p, vm.dataVersion) { vm.effectiveSegments(ch, p) }
     val bounds = remember(segs) {
         var acc = 0
         segs.map { acc += it.text.length; acc }

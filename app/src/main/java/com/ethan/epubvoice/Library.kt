@@ -112,6 +112,7 @@ class Library(private val ctx: Context) {
         File(coversDir, "$id.jpg").delete()
         File(ctx.filesDir, "ai_$id.json").delete()
         File(ctx.filesDir, "bookdata_$id.json").delete()
+        File(ctx.filesDir, "cache_$id.bin").delete()
         sp.edit().remove("bm_$id").apply()
     }
 

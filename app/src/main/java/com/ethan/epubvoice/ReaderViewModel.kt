@@ -594,9 +594,14 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     private suspend fun loadInto(id: String, legacy: Boolean) {
         val file = lib.bookFile(id)
+        val cacheFile = File(app.filesDir, "cache_$id.bin")
         val parsed = withContext(Dispatchers.IO) {
-            val bk = EpubParser.parseFile(file)
-            bk to SpeakerDetector.detect(bk)
+            BookCache.load(cacheFile) ?: run {
+                val bk = EpubParser.parseFile(file)
+                val found = SpeakerDetector.detect(bk)
+                BookCache.save(cacheFile, bk, found)
+                bk to found
+            }
         }
         val b = parsed.first
         val det = parsed.second
@@ -673,11 +678,18 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     // ---------- navigation ----------
 
-    private fun saveProgress() {
-        update { copy(lastChapter = chapterIndex, lastParagraph = paragraphIndex) }
+    private var lastLibSave = 0L
+
+    /** Remembers the position. While reading aloud the file is written at most every 15 seconds to save battery. */
+    private fun saveProgress(force: Boolean = true) {
+        settings = settings.copy(lastChapter = chapterIndex, lastParagraph = paragraphIndex)
         if (bookId.isNotEmpty()) {
             library = library.map { if (it.id == bookId) it.copy(chapter = chapterIndex, paragraph = paragraphIndex) else it }
-            lib.save(library)
+            val now = System.currentTimeMillis()
+            if (force || now - lastLibSave > 15_000L) {
+                lib.save(library)
+                lastLibSave = now
+            }
         }
     }
 
@@ -754,7 +766,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     e.voice = if (e is SystemTtsEngine) settings.voice.ifEmpty { null } else null
                     e.speak(text)
                     paragraphIndex++
-                    saveProgress()
+                    saveProgress(force = false)
                 }
             } catch (c: CancellationException) {
                 throw c
@@ -873,6 +885,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     override fun onCleared() {
+        if (bookId.isNotEmpty()) lib.save(library)
         engine?.shutdown()
         super.onCleared()
     }
