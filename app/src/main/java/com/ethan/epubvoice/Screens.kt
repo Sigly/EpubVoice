@@ -215,7 +215,9 @@ fun ReaderScreen(vm: ReaderViewModel, nav: (Screen) -> Unit) {
         }
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (book == null) {
+            if (vm.loading) {
+                BookwormLoading(vm.loadingTitle)
+            } else if (book == null) {
                 Column(
                     Modifier.fillMaxSize().padding(24.dp),
                     verticalArrangement = Arrangement.Center,

@@ -46,6 +46,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private val lib = Library(app)
     private var bookId = ""
 
+    /** Name of the book being opened, shown on the loading screen. */
+    var loadingTitle by mutableStateOf("")
+        private set
+
     var library by mutableStateOf(lib.load())
         private set
     var bookmarks by mutableStateOf<List<Bookmark>>(emptyList())
@@ -625,11 +629,14 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         pause()
         aiJob?.cancel()
         loading = true
+        loadingTitle = ""
         error = null
         if (!restore) openSignal++
         viewModelScope.launch {
             try {
                 val id = withContext(Dispatchers.IO) { lib.importUri(uri) }
+                loadingTitle = library.firstOrNull { it.id == id }?.title
+                    ?: withContext(Dispatchers.IO) { EpubParser.meta(lib.bookFile(id)).first }
                 val legacy = settings.lastBookId.isEmpty() && settings.lastUri == uri.toString()
                 loadInto(id, legacy)
             } catch (t: Throwable) {
@@ -646,6 +653,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         loading = true
         error = null
         openSignal++
+        loadingTitle = library.firstOrNull { it.id == id }?.title ?: ""
         viewModelScope.launch {
             try {
                 loadInto(id, false)
