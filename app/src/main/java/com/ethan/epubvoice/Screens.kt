@@ -125,8 +125,16 @@ fun App(vm: ReaderViewModel) {
     var screen by remember {
         mutableStateOf(if (vm.settings.lastBookId.isEmpty() && vm.settings.lastUri.isEmpty()) Screen.LIBRARY else Screen.READER)
     }
+    var readyTitle by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(vm.openSignal) {
         if (vm.openSignal > 0) screen = Screen.READER
+    }
+    // A book keeps loading while you look around. If you are somewhere else when it finishes, a strip says so.
+    LaunchedEffect(vm.loadedSignal) {
+        if (vm.loadedSignal > 0 && screen != Screen.READER) readyTitle = vm.loadedTitle
+    }
+    LaunchedEffect(screen) {
+        if (screen == Screen.READER) readyTitle = null
     }
     BackHandler(enabled = screen != Screen.READER && !(screen == Screen.LIBRARY && vm.book == null)) {
         screen = Screen.READER
@@ -138,17 +146,53 @@ fun App(vm: ReaderViewModel) {
         color = bg,
         contentColor = if (bg.luminance() < 0.5f) Color.White else Color.Black
     ) {
-        when (screen) {
-            Screen.READER -> ReaderScreen(vm, nav = { screen = it })
-            Screen.SETTINGS -> SettingsScreen(vm) { screen = Screen.READER }
-            Screen.CHARACTERS -> CharactersScreen(vm) { screen = Screen.READER }
-            Screen.CHAPTERS -> ChaptersScreen(vm) { screen = Screen.READER }
-            Screen.LIBRARY -> LibraryScreen(
-                vm,
-                canClose = vm.book != null,
-                close = { screen = Screen.READER },
-                nav = { screen = it }
-            )
+        Column(Modifier.fillMaxSize()) {
+            if (vm.loading && screen != Screen.READER) {
+                Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primaryContainer)) {
+                    Text(
+                        if (vm.loadingTitle.isBlank()) "Working in the background..." else "Loading ${vm.loadingTitle} in the background...",
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                    )
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+            }
+            readyTitle?.let { t ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Blue)
+                        .clickable { screen = Screen.READER; readyTitle = null }
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "$t is ready",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text("OPEN", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when (screen) {
+                    Screen.READER -> ReaderScreen(vm, nav = { screen = it })
+                    Screen.SETTINGS -> SettingsScreen(vm) { screen = Screen.READER }
+                    Screen.CHARACTERS -> CharactersScreen(vm) { screen = Screen.READER }
+                    Screen.CHAPTERS -> ChaptersScreen(vm) { screen = Screen.READER }
+                    Screen.LIBRARY -> LibraryScreen(
+                        vm,
+                        canClose = vm.book != null,
+                        close = { screen = Screen.READER },
+                        nav = { screen = it }
+                    )
+                }
+            }
         }
     }
 }
@@ -179,7 +223,7 @@ fun ReaderScreen(vm: ReaderViewModel, nav: (Screen) -> Unit) {
                 Modifier.weight(1f).clickable(enabled = book != null) { nav(Screen.CHAPTERS) }.padding(horizontal = 6.dp)
             ) {
                 Text(
-                    book?.title ?: "EpubVoice",
+                    book?.title ?: "BookWyrm",
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
                     maxLines = 1,
@@ -216,7 +260,7 @@ fun ReaderScreen(vm: ReaderViewModel, nav: (Screen) -> Unit) {
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (vm.loading) {
-                BookwormLoading(vm.loadingTitle)
+                WyrmLoading(vm.loadingTitle)
             } else if (book == null) {
                 Column(
                     Modifier.fillMaxSize().padding(24.dp),

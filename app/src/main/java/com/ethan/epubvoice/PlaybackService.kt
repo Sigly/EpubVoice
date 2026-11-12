@@ -28,7 +28,7 @@ class PlaybackService : Service() {
             PendingIntent.FLAG_IMMUTABLE
         )
         val notification = Notification.Builder(this, "reading")
-            .setContentTitle("EpubVoice")
+            .setContentTitle("BookWyrm")
             .setContentText(intent?.getStringExtra("text") ?: "Reading aloud")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentIntent(open)

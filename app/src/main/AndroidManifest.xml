@@ -19,7 +19,7 @@
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="EpubVoice"
+        android:label="BookWyrm"
         android:theme="@style/Theme.EpubVoice"
         android:usesCleartextTraffic="true">
 

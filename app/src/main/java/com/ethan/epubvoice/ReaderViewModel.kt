@@ -49,6 +49,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     /** Name of the book being opened, shown on the loading screen. */
     var loadingTitle by mutableStateOf("")
         private set
+    var loadedTitle by mutableStateOf("")
+        private set
+    var loadedSignal by mutableIntStateOf(0)
+        private set
 
     var library by mutableStateOf(lib.load())
         private set
@@ -102,7 +106,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val info = updateInfo ?: return
         if (updateBusy) return
         if (!app.packageManager.canRequestPackageInstalls()) {
-            updateStatus = "Allow installs from EpubVoice on the screen that opened, then tap here again"
+            updateStatus = "Allow installs from BookWyrm on the screen that opened, then tap here again"
             app.startActivity(
                 Intent(
                     android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
@@ -502,7 +506,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 sb.append("<paragraph number>: <name for Q1> | <name for Q2> | ...\n")
                 sb.append("Only list paragraphs that have a Q. Give one name per Q, in order, separated by |. Write a #<chapter> line for every chapter you analyzed, even if it has no quotes. Example:\n")
                 sb.append("EPUBVOICE-AI 1\n#719\n12: Agnus\n13: Bob | Bob | -\n#720\n3: System\n")
-                sb.append("Then tell the user to open EpubVoice > Characters > Restore backup and pick that file.\n")
+                sb.append("Then tell the user to open BookWyrm > Characters > Restore backup and pick that file.\n")
                 for (ch in from..last) {
                     sb.append("\n=== CHAPTER ").append(ch).append(" (the app shows it as chapter ").append(ch + 1)
                         .append("): ").append(b.chapters[ch].title).append(" ===\n")
@@ -669,6 +673,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun addBooks(uris: List<Uri>) {
         if (uris.isEmpty()) return
         loading = true
+        loadingTitle = ""
         error = null
         viewModelScope.launch {
             var lastId = ""
@@ -771,6 +776,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         aiStatus = null
         computeCharacters()
         maybeAutoAnalyze()
+        loadedTitle = b.title
+        loadedSignal++
     }
 
     // ---------- bookmarks ----------
