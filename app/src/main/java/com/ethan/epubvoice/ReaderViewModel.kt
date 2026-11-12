@@ -51,6 +51,79 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     var bookmarks by mutableStateOf<List<Bookmark>>(emptyList())
         private set
 
+    var updateInfo by mutableStateOf<UpdateInfo?>(null)
+        private set
+    var updateBusy by mutableStateOf(false)
+        private set
+    var updateStatus by mutableStateOf<String?>(null)
+        private set
+    private val updatePrefs = app.getSharedPreferences("updates", android.content.Context.MODE_PRIVATE)
+
+    init {
+        checkForUpdate()
+    }
+
+    /** Looks for a newer build on GitHub (at most every 6 hours unless [force]). */
+    fun checkForUpdate(force: Boolean = false) {
+        val installed = Updater.installedBuild(app)
+        val storedBuild = updatePrefs.getInt("build", 0)
+        val storedUrl = updatePrefs.getString("url", "") ?: ""
+        val now = System.currentTimeMillis()
+        if (!force && now - updatePrefs.getLong("last", 0L) < 6 * 3600_000L) {
+            updateInfo = if (storedBuild > installed && storedUrl.isNotEmpty()) UpdateInfo(storedBuild, storedUrl) else null
+            return
+        }
+        viewModelScope.launch {
+            val info = withContext(Dispatchers.IO) {
+                try {
+                    Updater.latest()
+                } catch (_: Throwable) {
+                    null
+                }
+            }
+            if (info == null) {
+                if (force) android.widget.Toast.makeText(app, "Could not check for updates", android.widget.Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            updatePrefs.edit().putLong("last", now).putInt("build", info.build).putString("url", info.url).apply()
+            updateInfo = if (info.build > installed) info else null
+            if (updateInfo == null) {
+                File(app.cacheDir, "update").deleteRecursively()
+                if (force) android.widget.Toast.makeText(app, "You have the latest version", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun installUpdate() {
+        val info = updateInfo ?: return
+        if (updateBusy) return
+        if (!app.packageManager.canRequestPackageInstalls()) {
+            updateStatus = "Allow installs from EpubVoice on the screen that opened, then tap here again"
+            app.startActivity(
+                Intent(
+                    android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:" + app.packageName)
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            return
+        }
+        updateBusy = true
+        updateStatus = "Downloading..."
+        viewModelScope.launch {
+            try {
+                val apk = withContext(Dispatchers.IO) {
+                    Updater.download(app, info) { pct -> updateStatus = "Downloading... $pct%" }
+                }
+                updateStatus = "Opening the installer..."
+                Updater.install(app, apk)
+            } catch (t: Throwable) {
+                updateStatus = "Update failed: ${t.message}"
+            } finally {
+                updateBusy = false
+            }
+        }
+    }
+
     /** Bumped whenever a book starts opening from outside the library screen (shortcut, file open). */
     var openSignal by mutableIntStateOf(0)
         private set

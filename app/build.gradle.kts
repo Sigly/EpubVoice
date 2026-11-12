@@ -11,8 +11,10 @@ android {
         applicationId = "com.ethan.epubvoice"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        // The build number from GitHub Actions, so a newer release is recognised as an update.
+        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = build
+        versionName = "1.0.$build"
     }
 
     // A fixed debug key so every build is signed the same and installs as an update.

@@ -61,10 +61,12 @@ import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -206,6 +208,7 @@ fun ReaderScreen(vm: ReaderViewModel, nav: (Screen) -> Unit) {
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        UpdateBanner(vm)
         if (vm.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         vm.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
@@ -600,9 +603,11 @@ fun LibraryScreen(vm: ReaderViewModel, canClose: Boolean, close: () -> Unit, nav
                     color = MaterialTheme.colorScheme.secondary
                 )
             }
+            IconButton({ vm.checkForUpdate(force = true) }) { Icon(Icons.Filled.SystemUpdate, "Check for updates", tint = Blue) }
             IconButton({ picker.launch(arrayOf("*/*")) }) { Icon(Icons.Filled.Add, "Add books", tint = Blue) }
             IconButton({ nav(Screen.SETTINGS) }) { Icon(Icons.Filled.Settings, "Settings", tint = Blue) }
         }
+        UpdateBanner(vm)
         if (vm.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         vm.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
@@ -803,4 +808,28 @@ private fun shortcutBitmap(ctx: Context, e: LibraryEntry): Bitmap {
         }
     }
     return out
+}
+
+/** A blue strip shown when a newer build is available on GitHub. Tap it to download and install. */
+@Composable
+fun UpdateBanner(vm: ReaderViewModel) {
+    val u = vm.updateInfo ?: return
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(Blue)
+            .clickable(enabled = !vm.updateBusy) { vm.installUpdate() }
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Update available (build ${u.build})", color = Color.White, fontWeight = FontWeight.Bold)
+            Text(vm.updateStatus ?: "Tap to download and install", color = Color.White, fontSize = 12.sp)
+        }
+        if (vm.updateBusy) {
+            CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+        } else {
+            Text("INSTALL", color = Color.White, fontWeight = FontWeight.Bold)
+        }
+    }
 }
