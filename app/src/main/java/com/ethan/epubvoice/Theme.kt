@@ -43,14 +43,19 @@ fun appColors(dark: Boolean): ColorScheme = if (dark) {
         primaryContainer = Color(0xFFD6E6FF),
         onPrimaryContainer = Color.Black,
         secondary = Color(0xFF1F5FC8),
-        background = Color.White,
+        background = Color(0xFFEBEBEB),
         onBackground = Color.Black,
-        surface = Color.White,
+        surface = Color(0xFFEBEBEB),
         onSurface = Color.Black,
-        surfaceVariant = Color(0xFFEEF3FB),
+        surfaceVariant = Color(0xFFDDE3EC),
         onSurfaceVariant = Color(0xFF33445C),
-        outline = Color(0xFFB7C6DD),
-        surfaceContainerHigh = Color(0xFFF2F6FC),
-        surfaceContainerHighest = Color(0xFFE8EEF8)
+        outline = Color(0xFFA9B8CF),
+        outlineVariant = Color(0xFFCBD4E2),
+        error = Color(0xFFB3261E),
+        surfaceContainerLowest = Color(0xFFF5F5F5),
+        surfaceContainerLow = Color(0xFFE2E6EC),
+        surfaceContainer = Color(0xFFDCE2EB),
+        surfaceContainerHigh = Color(0xFFF4F6FA),
+        surfaceContainerHighest = Color(0xFFFFFFFF)
     )
 }

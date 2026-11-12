@@ -8,6 +8,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -24,6 +26,13 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+
+/** Darker versions of the character colors, used when the reading background is light. */
+private val PALETTE_LIGHT = intArrayOf(
+    0xFF9A6B00.toInt(), 0xFF2E7D32.toInt(), 0xFF1565C0.toInt(), 0xFFC62828.toInt(),
+    0xFF7B1FA2.toInt(), 0xFF00838F.toInt(), 0xFFE65100.toInt(), 0xFFAD1457.toInt(),
+    0xFF558B2F.toInt(), 0xFF455A64.toInt()
+)
 
 private val PALETTE = intArrayOf(
     0xFFFFD54F.toInt(), 0xFF81C784.toInt(), 0xFF64B5F6.toInt(), 0xFFE57373.toInt(),
@@ -136,7 +145,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun colorFor(speaker: String?): Int {
         if (speaker == null) return settings.dialogue
         settings.speakerColors[speaker]?.let { return it }
-        if (settings.autoColors) rank[speaker]?.let { return PALETTE[it % PALETTE.size] }
+        if (settings.autoColors) rank[speaker]?.let {
+            val pal = if (Color(settings.background).luminance() > 0.5f) PALETTE_LIGHT else PALETTE
+            return pal[it % pal.size]
+        }
         return settings.dialogue
     }
 

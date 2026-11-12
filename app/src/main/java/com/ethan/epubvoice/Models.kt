@@ -42,11 +42,11 @@ data class HttpProvider(
 data class EngineOption(val id: String, val label: String)
 
 data class Settings(
-    val background: Int = 0xFF000000.toInt(),
-    val narration: Int = 0xFFE8E8E8.toInt(),
-    val dialogue: Int = 0xFF5AA9FF.toInt(),
-    val highlight: Int = 0xFF0D2B52.toInt(),
-    val chapterTitle: Int = 0xFF3D8BFF.toInt(),
+    val background: Int = 0xFFEBEBEB.toInt(),
+    val narration: Int = 0xFF1C1C1C.toInt(),
+    val dialogue: Int = 0xFF1F5FC8.toInt(),
+    val highlight: Int = 0xFFC9DCFF.toInt(),
+    val chapterTitle: Int = 0xFF1F5FC8.toInt(),
     val fontSize: Float = 18f,
     /** "system:<package>" (empty package = device default) or "http:<providerId>" */
     val engineId: String = "system:",

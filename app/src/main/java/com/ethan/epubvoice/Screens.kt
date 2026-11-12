@@ -187,7 +187,7 @@ fun ReaderScreen(vm: ReaderViewModel, nav: (Screen) -> Unit) {
                     Text(
                         "Chapter ${vm.chapterIndex + 1} of ${book.chapters.size}",
                         fontSize = 12.sp,
-                        color = BlueSoft
+                        color = MaterialTheme.colorScheme.secondary
                     )
                 }
             }
@@ -261,7 +261,7 @@ fun ReaderScreen(vm: ReaderViewModel, nav: (Screen) -> Unit) {
                             "Chapter ${vm.chapterIndex + 1} / ${book.chapters.size}  (tap to jump)",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = BlueSoft,
+                            color = MaterialTheme.colorScheme.secondary,
                             modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { showJump = true }.padding(4.dp)
                         )
                         Spacer(Modifier.weight(1f))
@@ -487,14 +487,14 @@ fun ChaptersScreen(vm: ReaderViewModel, back: () -> Unit) {
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .background(if (isCurrent) BlueDeep else Color.Transparent)
+                            .background(if (isCurrent) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
                             .clickable { vm.jumpTo(i, 0); back() }
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             "${i + 1}",
-                            color = if (isCurrent) Color.White else BlueSoft,
+                            color = if (isCurrent) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.secondary,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.width(56.dp)
                         )
@@ -543,7 +543,7 @@ fun ChaptersScreen(vm: ReaderViewModel, back: () -> Unit) {
                         Column(Modifier.weight(1f).padding(start = 12.dp)) {
                             Text(
                                 "Chapter ${bm.chapter + 1}, paragraph ${bm.paragraph + 1}",
-                                color = BlueSoft,
+                                color = MaterialTheme.colorScheme.secondary,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp
                             )
@@ -597,7 +597,7 @@ fun LibraryScreen(vm: ReaderViewModel, canClose: Boolean, close: () -> Unit, nav
                 Text(
                     if (vm.library.size == 1) "1 book" else "${vm.library.size} books",
                     fontSize = 12.sp,
-                    color = BlueSoft
+                    color = MaterialTheme.colorScheme.secondary
                 )
             }
             IconButton({ picker.launch(arrayOf("*/*")) }) { Icon(Icons.Filled.Add, "Add books", tint = Blue) }
@@ -709,8 +709,8 @@ fun BookCard(e: LibraryEntry, current: Boolean, onClick: () -> Unit, onLong: () 
                 .fillMaxWidth()
                 .aspectRatio(0.68f)
                 .clip(shape)
-                .background(Panel2)
-                .border(if (current) 2.dp else 1.dp, if (current) Blue else Line, shape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(if (current) 2.dp else 1.dp, if (current) Blue else MaterialTheme.colorScheme.outline, shape)
         ) {
             if (img != null) {
                 Image(img, e.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
@@ -750,7 +750,7 @@ fun BookCard(e: LibraryEntry, current: Boolean, onClick: () -> Unit, onLong: () 
         Text(
             if (e.total > 0) "Chapter ${e.chapter + 1} of ${e.total}" else "Not opened yet",
             fontSize = 11.sp,
-            color = BlueSoft
+            color = MaterialTheme.colorScheme.secondary
         )
     }
 }

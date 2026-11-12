@@ -14,8 +14,8 @@ class Prefs(ctx: Context) {
         } catch (e: Exception) {
             JSONObject()
         }
-        // Saved text colors from before the black, white and blue look are replaced once by the new defaults.
-        val fresh = j.optInt("themeV", 0) < 2
+        // Saved text colors from before the black, white and blue look are replaced once by the new defaults (light grey base).
+        val fresh = j.optInt("themeV", 0) < 3
         return Settings(
             background = if (fresh) d.background else j.optInt("background", d.background),
             narration = if (fresh) d.narration else j.optInt("narration", d.narration),
@@ -82,7 +82,7 @@ class Prefs(ctx: Context) {
         j.put("aiAuto", s.aiAuto)
         j.put("aiParallel", s.aiParallel)
         j.put("aiDelay", s.aiDelay)
-        j.put("themeV", 2)
+        j.put("themeV", 3)
         j.put("lastUri", s.lastUri)
         j.put("lastBookId", s.lastBookId)
         j.put("lastChapter", s.lastChapter)
