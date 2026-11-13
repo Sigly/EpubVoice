@@ -27,8 +27,48 @@ object Updater {
         }
     }
 
-    /** Blocking. Returns the highest-numbered release that has an APK, or null when the list cannot be read. */
+    /**
+     * Blocking. Asks the plain github.com "latest release" page first (no API limits), then the API.
+     * Throws the first problem it ran into when neither works.
+     */
     fun latest(): UpdateInfo? {
+        var firstError: Throwable? = null
+        try {
+            redirectLatest()?.let { return it }
+        } catch (t: Throwable) {
+            firstError = t
+        }
+        try {
+            apiLatest()?.let { return it }
+        } catch (t: Throwable) {
+            if (firstError == null) firstError = t
+        }
+        if (firstError != null) throw firstError
+        return null
+    }
+
+    private fun redirectLatest(): UpdateInfo? {
+        val c = URL("https://github.com/$REPO/releases/latest").openConnection() as HttpURLConnection
+        try {
+            c.instanceFollowRedirects = false
+            c.requestMethod = "HEAD"
+            c.useCaches = false
+            c.connectTimeout = 15000
+            c.readTimeout = 15000
+            c.setRequestProperty("User-Agent", "EpubVoice-updater")
+            val code = c.responseCode
+            if (code !in 300..399) return null
+            val location = c.getHeaderField("Location") ?: return null
+            val tag = location.substringAfter("/tag/", "")
+            val build = tag.removePrefix("build-").toIntOrNull() ?: return null
+            return UpdateInfo(build, "https://github.com/$REPO/releases/download/$tag/EpubVoice.apk")
+        } finally {
+            c.disconnect()
+        }
+    }
+
+    /** Blocking. Returns the highest-numbered release that has an APK, or null when the list cannot be read. */
+    private fun apiLatest(): UpdateInfo? {
         val c = URL("https://api.github.com/repos/$REPO/releases?per_page=10&t=" + System.currentTimeMillis())
             .openConnection() as HttpURLConnection
         try {

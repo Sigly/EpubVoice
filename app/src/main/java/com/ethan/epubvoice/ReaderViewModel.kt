@@ -82,15 +82,23 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         viewModelScope.launch {
+            var failure: String? = null
             val info = withContext(Dispatchers.IO) {
                 try {
                     Updater.latest()
-                } catch (_: Throwable) {
+                } catch (t: Throwable) {
+                    failure = t.javaClass.simpleName + (t.message?.let { ": $it" } ?: "")
                     null
                 }
             }
             if (info == null) {
-                if (force) android.widget.Toast.makeText(app, "Could not check for updates", android.widget.Toast.LENGTH_SHORT).show()
+                if (force) {
+                    android.widget.Toast.makeText(
+                        app,
+                        "Could not check for updates" + (failure?.let { " ($it)" } ?: " (no release found)"),
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
                 return@launch
             }
             updatePrefs.edit().putLong("last", now).putInt("build", info.build).putString("url", info.url).apply()
