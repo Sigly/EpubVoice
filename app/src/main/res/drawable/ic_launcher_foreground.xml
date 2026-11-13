@@ -43,22 +43,24 @@
         android:fillColor="#FFFFFF"
         android:pathData="M80.2,44.4 L81.4,48.4 L78.6,46 Z" />
 
-    <!-- the book in front -->
-    <path
-        android:fillColor="#000000"
-        android:strokeColor="#000000"
-        android:strokeWidth="3.4"
-        android:strokeLineJoin="round"
-        android:pathData="M54,50 C49,47 42,46.5 37,48 L37,68 C42,66.5 49,67 54,70 C59,67 66,66.5 71,68 L71,48 C66,46.5 59,47 54,50 Z" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M53.4,50.6 C49,47.6 42,47.1 37.4,48.4 L37.4,67.4 C42,66.2 49,66.6 53.4,69.4 Z" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54.6,50.6 C59,47.6 66,47.1 70.6,48.4 L70.6,67.4 C66,66.2 59,66.6 54.6,69.4 Z" />
-    <path
-        android:strokeColor="#B8C4D6"
-        android:strokeWidth="1.2"
-        android:strokeLineCap="round"
-        android:pathData="M40.5,53 C44,52.2 47,52.3 51,53.4 M40.5,57.5 C44,56.7 47,56.8 51,57.9 M40.5,62 C44,61.2 47,61.3 51,62.4 M67.5,53 C64,52.2 61,52.3 57,53.4 M67.5,57.5 C64,56.7 61,56.8 57,57.9 M67.5,62 C64,61.2 61,61.3 57,62.4" />
+    <group android:translateY="-4">
+        <!-- the book in front -->
+        <path
+            android:fillColor="#000000"
+            android:strokeColor="#000000"
+            android:strokeWidth="3.4"
+            android:strokeLineJoin="round"
+            android:pathData="M54,50 C49,47 42,46.5 37,48 L37,68 C42,66.5 49,67 54,70 C59,67 66,66.5 71,68 L71,48 C66,46.5 59,47 54,50 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M53.4,50.6 C49,47.6 42,47.1 37.4,48.4 L37.4,67.4 C42,66.2 49,66.6 53.4,69.4 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M54.6,50.6 C59,47.6 66,47.1 70.6,48.4 L70.6,67.4 C66,66.2 59,66.6 54.6,69.4 Z" />
+        <path
+            android:strokeColor="#B8C4D6"
+            android:strokeWidth="1.2"
+            android:strokeLineCap="round"
+            android:pathData="M40.5,53 C44,52.2 47,52.3 51,53.4 M40.5,57.5 C44,56.7 47,56.8 51,57.9 M40.5,62 C44,61.2 47,61.3 51,62.4 M67.5,53 C64,52.2 61,52.3 57,53.4 M67.5,57.5 C64,56.7 61,56.8 57,57.9 M67.5,62 C64,61.2 61,61.3 57,62.4" />
+    </group>
 </vector>
