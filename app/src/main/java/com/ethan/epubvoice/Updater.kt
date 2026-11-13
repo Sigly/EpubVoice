@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.content.FileProvider
-import org.json.JSONObject
+import org.json.JSONArray
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -27,25 +27,33 @@ object Updater {
         }
     }
 
-    /** Blocking. Returns the newest release, or null when it cannot be read. */
+    /** Blocking. Returns the highest-numbered release that has an APK, or null when the list cannot be read. */
     fun latest(): UpdateInfo? {
-        val c = URL("https://api.github.com/repos/$REPO/releases/latest").openConnection() as HttpURLConnection
+        val c = URL("https://api.github.com/repos/$REPO/releases?per_page=10&t=" + System.currentTimeMillis())
+            .openConnection() as HttpURLConnection
         try {
             c.connectTimeout = 15000
             c.readTimeout = 15000
+            c.useCaches = false
             c.setRequestProperty("Accept", "application/vnd.github+json")
+            c.setRequestProperty("Cache-Control", "no-cache")
             c.setRequestProperty("User-Agent", "EpubVoice-updater")
             if (c.responseCode != 200) return null
-            val j = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
-            val build = j.optString("tag_name").removePrefix("build-").toIntOrNull() ?: return null
-            val assets = j.optJSONArray("assets") ?: return null
-            for (i in 0 until assets.length()) {
-                val a = assets.optJSONObject(i) ?: continue
-                if (a.optString("name").endsWith(".apk")) {
-                    return UpdateInfo(build, a.optString("browser_download_url"))
+            val list = JSONArray(c.inputStream.bufferedReader().use { it.readText() })
+            var best: UpdateInfo? = null
+            for (r in 0 until list.length()) {
+                val j = list.optJSONObject(r) ?: continue
+                if (j.optBoolean("draft") || j.optBoolean("prerelease")) continue
+                val build = j.optString("tag_name").removePrefix("build-").toIntOrNull() ?: continue
+                val assets = j.optJSONArray("assets") ?: continue
+                for (i in 0 until assets.length()) {
+                    val a = assets.optJSONObject(i) ?: continue
+                    if (a.optString("name").endsWith(".apk") && (best == null || build > best.build)) {
+                        best = UpdateInfo(build, a.optString("browser_download_url"))
+                    }
                 }
             }
-            return null
+            return best
         } finally {
             c.disconnect()
         }

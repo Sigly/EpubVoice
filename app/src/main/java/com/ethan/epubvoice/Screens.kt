@@ -644,7 +644,8 @@ fun LibraryScreen(vm: ReaderViewModel, canClose: Boolean, close: () -> Unit, nav
             Column(Modifier.weight(1f)) {
                 Text("Library", fontSize = 28.sp, fontWeight = FontWeight.Bold)
                 Text(
-                    if (vm.library.size == 1) "1 book" else "${vm.library.size} books",
+                    (if (vm.library.size == 1) "1 book" else "${vm.library.size} books") +
+                        "  ·  build ${Updater.installedBuild(ctx)}",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.secondary
                 )

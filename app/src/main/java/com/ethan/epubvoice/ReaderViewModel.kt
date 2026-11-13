@@ -97,7 +97,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             updateInfo = if (info.build > installed) info else null
             if (updateInfo == null) {
                 File(app.cacheDir, "update").deleteRecursively()
-                if (force) android.widget.Toast.makeText(app, "You have the latest version", android.widget.Toast.LENGTH_SHORT).show()
+                if (force) android.widget.Toast.makeText(app, "You have the latest version (build $installed, newest is build ${info.build})", android.widget.Toast.LENGTH_LONG).show()
             }
         }
     }
